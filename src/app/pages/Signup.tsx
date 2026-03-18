@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 import { Loader2, Users, Building2 } from 'lucide-react';
 

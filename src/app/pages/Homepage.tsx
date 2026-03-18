@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { useAuth } from '../context/useAuth';
 import { 
   Search, MapPin, Briefcase, Heart, CheckCircle, TrendingUp,
   Users, Building2, DollarSign, Code, Heart as HeartIcon,
@@ -27,6 +28,7 @@ const industries = [
 const popularTags = ['Remote', 'IT', 'Finance', 'Graduate', 'Durban', 'Cape Town'];
 
 export default function Homepage() {
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
@@ -305,10 +307,10 @@ export default function Homepage() {
                 Post your job for free and connect with qualified South African talent.
               </p>
               <Link
-                to="/signup?type=employer"
+                to={user ? (profile?.userType === 'employer' ? '/employer/post-job' : '/seeker/dashboard') : '/signup?type=employer'}
                 className="inline-block px-8 py-3 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-pill)] hover:bg-gray-100 transition-colors font-semibold"
               >
-                Post a Job Free
+                {user && profile?.userType === 'employer' ? 'Post a Job' : 'Post a Job Free'}
               </Link>
             </div>
           </div>

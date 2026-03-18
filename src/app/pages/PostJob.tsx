@@ -1,373 +1,466 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router';
-import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router';
+import { useForm } from 'react-hook-form';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { 
+  Building2, MapPin, Globe, Upload, CheckCircle, Video,
+  Linkedin, Facebook, Instagram, Twitter, ChevronRight, Check, Loader2
+} from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Badge } from '../components/ui/badge';
+import { Card, CardContent } from '../components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Switch } from '../components/ui/switch';
+import { Label } from '../components/ui/label';
 
-const steps = ['Job Details', 'Requirements', 'Interview Setup', 'Preview & Publish'];
+interface PostJobFormValues {
+  title: string;
+  industry: string;
+  category: string;
+  employment_type: string;
+  work_location: string;
+  province: string;
+  city: string;
+  salary_min: number;
+  salary_max: number;
+  hide_salary: boolean;
+  deadline: string;
+  description: string;
+  requirements: string;
+  benefits: string;
+  experience_level: string;
+  qualification: string;
+  positions: number;
+  interview_type: string;
+}
 
 export default function PostJob() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    title: '',
-    industry: '',
-    jobType: 'Full-time',
-    location: '',
-    remoteType: 'onsite',
-    salaryMin: '',
-    salaryMax: '',
-    description: '',
-    requirements: '',
-    skills: '',
-    experienceLevel: 'Mid Level',
+  const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+
+  const { register, handleSubmit, getValues, setValue, watch, formState: { errors } } = useForm<PostJobFormValues>({
+    defaultValues: { hide_salary: false, positions: 1, interview_type: 'video' }
   });
 
-  const handleInputChange = (e: React.TargetEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setLoading(true);
+  const onPublish = async (data: PostJobFormValues) => {
+    setSubmitting(true);
     try {
-      const jobData = {
-        ...formData,
-        company: profile?.name,
-        salaryMin: parseInt(formData.salaryMin) || null,
-        salaryMax: parseInt(formData.salaryMax) || null,
-        skills: formData.skills.split(',').map(s => s.trim()).filter(Boolean),
-      };
+      const requirementsArr = data.requirements
+        ? data.requirements.split('\n').filter(Boolean)
+        : [];
+      const benefitsArr = data.benefits
+        ? data.benefits.split('\n').filter(Boolean)
+        : [];
 
       await apiCall('/jobs', {
         method: 'POST',
-        body: JSON.stringify(jobData),
+        body: JSON.stringify({
+          title: data.title,
+          industry: data.industry,
+          category: data.category,
+          employment_type: data.employment_type,
+          work_location: data.work_location,
+          province: data.province,
+          city: data.city,
+          salary_min: data.salary_min ? Number(data.salary_min) : null,
+          salary_max: data.salary_max ? Number(data.salary_max) : null,
+          description: data.description,
+          requirements: requirementsArr,
+          benefits: benefitsArr,
+          interview_type: data.interview_type,
+        }),
       });
 
       toast.success('Job posted successfully!');
-      navigate('/employer/dashboard');
+      navigate('/employer/listings');
     } catch (error: any) {
       toast.error(error.message || 'Failed to post job');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+  
+  const steps = [
+    { id: 1, label: 'Job Details' },
+    { id: 2, label: 'Description & Requirements' },
+    { id: 3, label: 'Interview Setup' },
+    { id: 4, label: 'Preview & Publish' },
+  ];
 
   return (
-    <div className="min-h-screen bg-[var(--rf-bg)] py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Link to="/employer/dashboard" className="flex items-center text-[var(--rf-green)] hover:underline mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Link>
-
-        <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8">
-          {/* Progress Indicator */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              {steps.map((step, index) => (
-                <div key={step} className="flex items-center">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                    index <= currentStep ? 'bg-[var(--rf-green)] text-white' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {index + 1}
-                  </div>
-                  {index < steps.length - 1 && (
-                    <div className={`w-16 h-1 mx-2 ${
-                      index < currentStep ? 'bg-[var(--rf-green)]' : 'bg-gray-200'
-                    }`} />
-                  )}
-                </div>
-              ))}
+    <div className="max-w-4xl mx-auto space-y-8 pb-20">
+      
+      {/* Header */}
+      <h1 className="text-3xl font-bold text-[#0A2540]">Post a New Job</h1>
+      
+      {/* Stepper */}
+      <div className="flex items-center justify-between relative">
+        <div className="absolute left-0 right-0 top-1/2 h-1 bg-gray-200 -z-10 rounded-full"></div>
+        <div 
+          className="absolute left-0 top-1/2 h-1 bg-[#00C853] -z-10 rounded-full transition-all duration-300"
+          style={{ width: `${((step - 1) / (steps.length - 1)) * 100}%` }}
+        ></div>
+        {steps.map((s) => (
+          <div key={s.id} className="flex flex-col items-center gap-2 bg-[#F5F7FA] px-2 z-10">
+            <div className={`
+              w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors border-2
+              ${step >= s.id 
+                ? 'bg-[#00C853] border-[#00C853] text-white' 
+                : 'bg-white border-gray-300 text-gray-400'}
+            `}>
+              {step > s.id ? <Check className="w-5 h-5" /> : s.id}
             </div>
-            <div className="flex justify-between text-sm">
-              {steps.map((step, index) => (
-                <span key={step} className={`${index <= currentStep ? 'text-[var(--rf-navy)] font-semibold' : 'text-[var(--rf-muted)]'}`}>
-                  {step}
-                </span>
-              ))}
-            </div>
+            <span className={`text-xs font-semibold ${step >= s.id ? 'text-[#0A2540]' : 'text-gray-400'}`}>
+              {s.label}
+            </span>
           </div>
+        ))}
+      </div>
 
-          {/* Step 1: Job Details */}
-          {currentStep === 0 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-[var(--rf-navy)] mb-4">Job Details</h2>
+      {/* Form Content */}
+      <Card className="border-none shadow-lg">
+        <CardContent className="p-8">
+          
+          {/* STEP 1: Job Details */}
+          {step === 1 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-xl font-bold text-[#0A2540] border-b pb-4">Step 1: Job Details</h2>
               
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Job Title *</label>
-                <input
-                  type="text"
-                  name="title"
-                  required
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  placeholder="e.g., Senior Software Developer"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Industry *</label>
-                  <input
-                    type="text"
-                    name="industry"
-                    required
-                    value={formData.industry}
-                    onChange={handleInputChange}
-                    className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                    placeholder="e.g., IT & Tech"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 col-span-2">
+                   <Label>Job Title *</Label>
+                   <Input placeholder="e.g. Senior Software Engineer" className="text-lg font-medium" {...register('title', { required: 'Job Title is required' })} />
+                   {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Job Type *</label>
-                  <select
-                    name="jobType"
-                    value={formData.jobType}
-                    onChange={handleInputChange}
-                    className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  >
-                    <option>Full-time</option>
-                    <option>Part-time</option>
-                    <option>Contract</option>
-                    <option>Internship</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Location *</label>
-                <input
-                  type="text"
-                  name="location"
-                  required
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  placeholder="e.g., Johannesburg, Gauteng"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Work Type *</label>
-                <div className="flex space-x-4">
-                  {['onsite', 'remote', 'hybrid'].map((type) => (
-                    <label key={type} className="flex items-center">
-                      <input
-                        type="radio"
-                        name="remoteType"
-                        value={type}
-                        checked={formData.remoteType === type}
-                        onChange={handleInputChange}
-                        className="mr-2"
-                      />
-                      <span className="capitalize">{type}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Salary Min (ZAR)</label>
-                  <input
-                    type="number"
-                    name="salaryMin"
-                    value={formData.salaryMin}
-                    onChange={handleInputChange}
-                    className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2"
-                    placeholder="30000"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Salary Max (ZAR)</label>
-                  <input
-                    type="number"
-                    name="salaryMax"
-                    value={formData.salaryMax}
-                    onChange={handleInputChange}
-                    className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2"
-                    placeholder="50000"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Requirements */}
-          {currentStep === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-[var(--rf-navy)] mb-4">Requirements</h2>
-              
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Job Description *</label>
-                <textarea
-                  name="description"
-                  required
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={6}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  placeholder="Describe the role, responsibilities, and what the candidate will do..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Requirements</label>
-                <textarea
-                  name="requirements"
-                  value={formData.requirements}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  placeholder="List the requirements, qualifications, and experience needed..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Skills (comma-separated)</label>
-                <input
-                  type="text"
-                  name="skills"
-                  value={formData.skills}
-                  onChange={handleInputChange}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                  placeholder="e.g., React, Node.js, TypeScript"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--rf-text)] mb-2">Experience Level</label>
-                <select
-                  name="experienceLevel"
-                  value={formData.experienceLevel}
-                  onChange={handleInputChange}
-                  className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                >
-                  <option>Entry Level</option>
-                  <option>Mid Level</option>
-                  <option>Senior Level</option>
-                  <option>Executive</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Interview Setup */}
-          {currentStep === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-[var(--rf-navy)] mb-4">Interview Setup</h2>
-              <p className="text-[var(--rf-muted)] mb-6">How would you like to interview candidates?</p>
-              
-              <div className="space-y-3">
-                <label className="block p-4 border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                  <input type="radio" name="interviewType" className="mr-3" defaultChecked />
-                  <span className="font-semibold">📋 Standard Apply Only</span>
-                  <p className="text-sm text-[var(--rf-muted)] ml-7 mt-1">Candidates apply with CV and cover letter</p>
-                </label>
                 
-                <label className="block p-4 border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                  <input type="radio" name="interviewType" className="mr-3" />
-                  <span className="font-semibold">📹 Live Video Interview</span>
-                  <p className="text-sm text-[var(--rf-muted)] ml-7 mt-1">Schedule video interviews after reviewing applications</p>
-                </label>
-                
-                <label className="block p-4 border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                  <input type="radio" name="interviewType" className="mr-3" />
-                  <span className="font-semibold">🎬 On-Demand Video Assessment</span>
-                  <p className="text-sm text-[var(--rf-muted)] ml-7 mt-1">Candidates record video answers to your questions</p>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Preview & Publish */}
-          {currentStep === 3 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-[var(--rf-navy)] mb-4">Preview & Publish</h2>
-              
-              <div className="border border-[var(--rf-border)] rounded-[var(--rf-radius-lg)] p-6 bg-gray-50">
-                <h3 className="text-xl font-bold text-[var(--rf-navy)] mb-2">{formData.title || 'Job Title'}</h3>
-                <p className="text-[var(--rf-muted)] mb-4">{profile?.name || 'Your Company'} • {formData.location || 'Location'}</p>
-                <p className="text-[var(--rf-text)] whitespace-pre-line">{formData.description || 'Job description will appear here'}</p>
-              </div>
-
-              <div className="bg-[var(--rf-green)] bg-opacity-10 rounded-[var(--rf-radius-lg)] p-6">
-                <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-4">Choose Your Package</h3>
-                <div className="space-y-3">
-                  <label className="block p-4 bg-white border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                    <input type="radio" name="package" className="mr-3" defaultChecked />
-                    <span className="font-semibold">FREE - Standard Listing</span>
-                  </label>
-                  
-                  <label className="block p-4 bg-white border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                    <input type="radio" name="package" className="mr-3" />
-                    <span className="font-semibold">GROWTH - R299 (Featured for 30 days)</span>
-                  </label>
-                  
-                  <label className="block p-4 bg-white border-2 border-[var(--rf-border)] rounded-[var(--rf-radius-md)] cursor-pointer hover:border-[var(--rf-green)] transition-colors">
-                    <input type="radio" name="package" className="mr-3" />
-                    <span className="font-semibold">PREMIUM - R599 (Top of search results)</span>
-                  </label>
+                <div className="space-y-2">
+                   <Label>Industry</Label>
+                   <Select onValueChange={(v) => setValue('industry', v)}>
+                      <SelectTrigger>
+                         <SelectValue placeholder="Select Industry" />
+                      </SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="it">Information Technology</SelectItem>
+                         <SelectItem value="finance">Finance</SelectItem>
+                         <SelectItem value="health">Healthcare</SelectItem>
+                         <SelectItem value="eng">Engineering</SelectItem>
+                      </SelectContent>
+                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                   <Label>Job Category</Label>
+                   <Select onValueChange={(v) => setValue('category', v)}>
+                      <SelectTrigger>
+                         <SelectValue placeholder="Select Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="dev">Software Development</SelectItem>
+                         <SelectItem value="design">Design</SelectItem>
+                      </SelectContent>
+                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                   <Label>Employment Type</Label>
+                   <Select onValueChange={(v) => setValue('employment_type', v)}>
+                      <SelectTrigger>
+                         <SelectValue placeholder="Select Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="full-time">Full-time</SelectItem>
+                         <SelectItem value="part-time">Part-time</SelectItem>
+                         <SelectItem value="contract">Contract</SelectItem>
+                         <SelectItem value="internship">Internship</SelectItem>
+                      </SelectContent>
+                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                   <Label>Work Location</Label>
+                   <Select onValueChange={(v) => setValue('work_location', v)}>
+                      <SelectTrigger>
+                         <SelectValue placeholder="Select Location Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="onsite">On-site</SelectItem>
+                         <SelectItem value="hybrid">Hybrid</SelectItem>
+                         <SelectItem value="remote">Remote</SelectItem>
+                      </SelectContent>
+                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Province</Label>
+                    <Select onValueChange={(v) => setValue('province', v)}>
+                      <SelectTrigger>
+                         <SelectValue placeholder="Select Province" />
+                      </SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="wc">Western Cape</SelectItem>
+                         <SelectItem value="gp">Gauteng</SelectItem>
+                         <SelectItem value="kzn">KwaZulu-Natal</SelectItem>
+                      </SelectContent>
+                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                   <Label>City</Label>
+                   <Input placeholder="e.g. Cape Town" {...register('city')} />
+                </div>
+                
+                <div className="space-y-2 col-span-2">
+                    <Label>Salary Range (ZAR)</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                       <Input type="number" placeholder="Min (e.g. 15000)" {...register('salary_min')} />
+                       <Input type="number" placeholder="Max (e.g. 25000)" {...register('salary_max')} />
+                    </div>
+                    <div className="flex items-center space-x-2 mt-2">
+                       <Switch id="hide-salary" onCheckedChange={(v) => setValue('hide_salary', v)} />
+                       <Label htmlFor="hide-salary" className="font-normal text-gray-600">Don't display salary to candidates</Label>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Application Deadline</Label>
+                    <Input type="date" {...register('deadline')} />
+                </div>
+
               </div>
             </div>
           )}
+
+          {/* STEP 2: Description */}
+          {step === 2 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-xl font-bold text-[#0A2540] border-b pb-4">Step 2: Description & Requirements</h2>
+              
+              <div className="space-y-4">
+                 <div className="space-y-2">
+                    <Label>Job Description *</Label>
+                    <Textarea placeholder="Describe the role, responsibilities..." className="min-h-[200px]" {...register('description', { required: 'Description is required' })} />
+                    {errors.description && <p className="text-red-500 text-sm">{errors.description.message}</p>}
+                 </div>
+                 
+                 <div className="space-y-2">
+                    <Label>Requirements (one per line)</Label>
+                    <Textarea placeholder="List qualifications, experience, skills..." className="min-h-[150px]" {...register('requirements')} />
+                 </div>
+
+                 <div className="space-y-2">
+                    <Label>Benefits (one per line, Optional)</Label>
+                    <Textarea placeholder="Medical aid, pension..." className="min-h-[100px]" {...register('benefits')} />
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                    <div className="space-y-2">
+                       <Label>Experience Level</Label>
+                       <Select onValueChange={(v) => setValue('experience_level', v)}>
+                          <SelectTrigger>
+                             <SelectValue placeholder="Select Level" />
+                          </SelectTrigger>
+                          <SelectContent>
+                             <SelectItem value="junior">Junior (1-2 yrs)</SelectItem>
+                             <SelectItem value="mid">Mid-Level (3-5 yrs)</SelectItem>
+                             <SelectItem value="senior">Senior (5+ yrs)</SelectItem>
+                          </SelectContent>
+                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                       <Label>Minimum Qualification</Label>
+                       <Select onValueChange={(v) => setValue('qualification', v)}>
+                          <SelectTrigger>
+                             <SelectValue placeholder="Select Qualification" />
+                          </SelectTrigger>
+                          <SelectContent>
+                             <SelectItem value="matric">Matric</SelectItem>
+                             <SelectItem value="degree">Degree</SelectItem>
+                             <SelectItem value="honours">Honours</SelectItem>
+                          </SelectContent>
+                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                       <Label>Positions Available</Label>
+                       <Input type="number" {...register('positions', { valueAsNumber: true })} />
+                    </div>
+                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Interview Setup */}
+          {step === 3 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-xl font-bold text-[#0A2540] border-b pb-4">Step 3: Interview Setup</h2>
+              
+              <p className="text-gray-600 mb-4">How would you like to screen candidates?</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                 <div className="border rounded-xl p-4 hover:border-[#00C853] cursor-pointer bg-blue-50/50 border-blue-200">
+                    <div className="p-2 bg-blue-100 rounded-lg w-fit mb-3 text-blue-700">
+                       <Building2 className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-[#0A2540] mb-1">Standard Apply</h3>
+                    <p className="text-xs text-gray-500">CV + Cover Letter only. Manual review.</p>
+                 </div>
+
+                 <div className="border rounded-xl p-4 hover:border-[#00C853] cursor-pointer bg-white">
+                    <div className="p-2 bg-purple-100 rounded-lg w-fit mb-3 text-purple-700">
+                       <Video className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-[#0A2540] mb-1">Live Interview</h3>
+                    <p className="text-xs text-gray-500">Schedule video calls directly.</p>
+                 </div>
+
+                 <div className="border-2 border-[#00C853] rounded-xl p-4 cursor-pointer bg-green-50/30 relative">
+                    <div className="absolute top-2 right-2 text-yellow-500">★</div>
+                    <div className="p-2 bg-green-100 rounded-lg w-fit mb-3 text-green-700">
+                       <CheckCircle className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-[#0A2540] mb-1">Video Assessment</h3>
+                    <p className="text-xs text-gray-500">Candidates record answers. Review anytime.</p>
+                 </div>
+              </div>
+
+              {/* Mock Screening Questions UI */}
+              <div className="space-y-4 border-t pt-6">
+                 <h3 className="font-bold text-[#0A2540]">Screening Questions</h3>
+                 <div className="space-y-3">
+                    <div className="flex gap-4">
+                       <Input placeholder="Question 1 (e.g. Tell us about yourself)" className="flex-1" />
+                       <Select defaultValue="1min">
+                          <SelectTrigger className="w-[120px]">
+                             <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                             <SelectItem value="1min">1 min</SelectItem>
+                             <SelectItem value="2min">2 min</SelectItem>
+                          </SelectContent>
+                       </Select>
+                       <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50">×</Button>
+                    </div>
+                 </div>
+                 <Button variant="outline" className="border-dashed border-gray-300 text-gray-500 hover:text-[#00C853] hover:border-[#00C853]">
+                    + Add Question
+                 </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* STEP 4: Preview */}
+          {step === 4 && (() => {
+            const preview = getValues();
+            const reqLines = preview.requirements ? preview.requirements.split('\n').filter(Boolean) : [];
+            return (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-xl font-bold text-[#0A2540] border-b pb-4">Step 4: Preview & Publish</h2>
+              
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                 <div className="flex justify-between items-start mb-4">
+                    <div>
+                       <h1 className="text-2xl font-bold text-[#0A2540]">{preview.title || 'Untitled Job'}</h1>
+                       <div className="flex gap-2 mt-2 flex-wrap">
+                          {preview.employment_type && <Badge variant="secondary">{preview.employment_type}</Badge>}
+                          {preview.work_location && <Badge variant="secondary">{preview.work_location}</Badge>}
+                          {preview.city && <Badge variant="secondary">{preview.city}</Badge>}
+                          {preview.province && <Badge variant="secondary">{preview.province}</Badge>}
+                       </div>
+                    </div>
+                    <Button disabled className="bg-gray-300 text-white">Apply Now</Button>
+                 </div>
+                 <div className="prose max-w-none text-gray-600 space-y-4">
+                    {preview.description && <p>{preview.description}</p>}
+                    {reqLines.length > 0 && (
+                      <>
+                        <p><strong>Requirements:</strong></p>
+                        <ul className="list-disc pl-5">{reqLines.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                      </>
+                    )}
+                    {!preview.hide_salary && (preview.salary_min || preview.salary_max) && (
+                      <p><strong>Salary:</strong> R{preview.salary_min || 0} – R{preview.salary_max || 0} pm</p>
+                    )}
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
+                 {/* Boost Options */}
+                 <Card className="border-2 border-gray-100 hover:border-[#00C853] cursor-pointer transition-all">
+                    <CardContent className="p-4 text-center">
+                       <h3 className="font-bold text-[#0A2540] mb-2">Standard</h3>
+                       <p className="text-2xl font-bold text-[#0A2540] mb-2">Free</p>
+                       <p className="text-xs text-gray-500 mb-4">Standard placement</p>
+                       <Button variant="outline" className="w-full">Select</Button>
+                    </CardContent>
+                 </Card>
+
+                 <Card className="border-2 border-[#00C853] bg-green-50/10 cursor-pointer relative shadow-lg transform scale-105">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#00C853] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Most Popular</div>
+                    <CardContent className="p-4 text-center">
+                       <h3 className="font-bold text-[#0A2540] mb-2">Featured</h3>
+                       <p className="text-2xl font-bold text-[#00C853] mb-2">R299</p>
+                       <p className="text-xs text-gray-500 mb-4">Top of search for 14 days</p>
+                       <Button className="w-full bg-[#00C853] hover:bg-[#00B548] text-white">Select</Button>
+                    </CardContent>
+                 </Card>
+
+                 <Card className="border-2 border-gray-100 hover:border-[#0A2540] cursor-pointer transition-all">
+                    <CardContent className="p-4 text-center">
+                       <h3 className="font-bold text-[#0A2540] mb-2">Premium</h3>
+                       <p className="text-2xl font-bold text-[#0A2540] mb-2">R599</p>
+                       <p className="text-xs text-gray-500 mb-4">Homepage feature slot</p>
+                       <Button variant="outline" className="w-full border-[#0A2540] text-[#0A2540]">Select</Button>
+                    </CardContent>
+                 </Card>
+              </div>
+
+            </div>
+            );
+          })()}
 
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-6 border-t border-[var(--rf-border)]">
-            <button
-              onClick={handleBack}
-              disabled={currentStep === 0}
-              className="px-6 py-2 border border-[var(--rf-border)] text-[var(--rf-text)] rounded-[var(--rf-radius-md)] hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Back
-            </button>
-            
-            {currentStep < steps.length - 1 ? (
-              <button
-                onClick={handleNext}
-                className="px-6 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors flex items-center"
-              >
-                Next
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="px-6 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors disabled:opacity-50 flex items-center"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Publishing...
-                  </>
-                ) : (
-                  'Publish Job'
-                )}
-              </button>
-            )}
+          <div className="flex justify-between pt-8 mt-8 border-t border-gray-100">
+             <Button 
+               type="button"
+               variant="outline" 
+               onClick={() => setStep(s => Math.max(1, s - 1))}
+               disabled={step === 1}
+             >
+                Back
+             </Button>
+             
+             {step < 4 ? (
+               <Button 
+                 type="button"
+                 className="bg-[var(--rf-green)] hover:bg-[#00B548] text-white px-8"
+                 onClick={handleSubmit(() => setStep(s => Math.min(4, s + 1)))}
+               >
+                  Save & Continue <ChevronRight className="w-4 h-4 ml-2" />
+               </Button>
+             ) : (
+               <Button
+                 type="button"
+                 disabled={submitting}
+                 className="bg-[var(--rf-green)] hover:bg-[#00B548] text-white px-8 shadow-lg shadow-green-500/30"
+                 onClick={handleSubmit(onPublish)}
+               >
+                 {submitting ? (
+                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Publishing...</>
+                 ) : (
+                   'Publish Listing 🎉'
+                 )}
+               </Button>
+             )}
           </div>
-        </div>
-      </div>
+
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

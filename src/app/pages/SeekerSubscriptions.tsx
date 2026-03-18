@@ -1,9 +1,17 @@
-import { Link } from 'react-router';
-import { ArrowLeft, Check, X } from 'lucide-react';
+import { useState } from 'react';
+import { useAuth } from '../context/useAuth';
+import { Check, X, Sparkles, Loader2 } from 'lucide-react';
+import { apiCall } from '../lib/supabase';
+import { toast } from 'sonner';
 
 export default function SeekerSubscriptions() {
+    const { profile, refreshProfile } = useAuth();
+    const [currentPlan, setCurrentPlan] = useState((profile?.subscription || 'free').toLowerCase());
+    const [workingPlan, setWorkingPlan] = useState<string | null>(null);
+
   const plans = [
     {
+      id: 'free',
       name: 'FREE',
       price: 'R0',
       color: 'gray',
@@ -16,10 +24,9 @@ export default function SeekerSubscriptions() {
         { text: 'See who viewed your profile', included: false },
         { text: 'Referral earnings', included: false },
       ],
-      cta: 'Current Plan',
-      ctaDisabled: true,
     },
     {
+      id: 'premium',
       name: 'PREMIUM',
       price: 'R149',
       period: '/month',
@@ -34,9 +41,9 @@ export default function SeekerSubscriptions() {
         { text: 'Advanced search filters', included: true },
         { text: 'Full referral programme', included: true },
       ],
-      cta: 'Upgrade to Premium',
     },
     {
+      id: 'professional',
       name: 'PROFESSIONAL',
       price: 'R299',
       period: '/month',
@@ -48,87 +55,123 @@ export default function SeekerSubscriptions() {
         { text: 'Career coach session (1/month)', included: true },
         { text: 'Interview prep toolkit', included: true },
         { text: 'Salary benchmarking (ZAR)', included: true },
-        { text: 'Featured profile badge 👑', included: true },
       ],
-      cta: 'Go Professional',
     },
   ];
 
+    async function changePlan(planId: string) {
+        if (planId === currentPlan) return;
+        setWorkingPlan(planId);
+        try {
+            const { subscription } = await apiCall('/subscriptions/change', {
+                method: 'POST',
+                body: JSON.stringify({ plan: planId }),
+            });
+            setCurrentPlan((subscription || planId).toLowerCase());
+            await refreshProfile();
+            toast.success(`Plan changed to ${planId}`);
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to change plan');
+        } finally {
+            setWorkingPlan(null);
+        }
+    }
+
+    async function startTrial() {
+        setWorkingPlan('trial');
+        try {
+            const { subscription } = await apiCall('/subscriptions/trial', { method: 'POST' });
+            setCurrentPlan((subscription || 'premium_trial').toLowerCase());
+            await refreshProfile();
+            toast.success('Free trial started');
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to start trial');
+        } finally {
+            setWorkingPlan(null);
+        }
+    }
+  
   return (
-    <div className="min-h-screen bg-[var(--rf-bg)] py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Link to="/seeker/dashboard" className="flex items-center text-[var(--rf-green)] hover:underline mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Link>
-
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-[var(--rf-navy)] mb-4">
-            ⭐ Upgrade Your RecruitFriend Experience
-          </h1>
-          <p className="text-xl text-[var(--rf-muted)]">
-            Get hired faster with premium RecruitFriend tools
-          </p>
+    <div className="space-y-8">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+            <h1 className="text-3xl font-bold text-[var(--rf-navy)] mb-4">Upgrade Your Career</h1>
+            <p className="text-[var(--rf-muted)]">
+                Unlock exclusive features to get hired faster. Cancel anytime.
+            </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8 relative ${
-                plan.badge ? 'ring-2 ring-[var(--rf-green)]' : ''
-              }`}
-            >
-              {plan.badge && (
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 px-4 py-1 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-pill)] text-sm font-semibold">
-                  {plan.badge}
-                </div>
-              )}
-              
-              <div className="text-center mb-6">
-                <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-2">{plan.name}</h3>
-                <div className="text-4xl font-bold text-[var(--rf-navy)]">
-                  {plan.price}
-                  {plan.period && <span className="text-lg text-[var(--rf-muted)]">{plan.period}</span>}
-                </div>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                {plan.features.map((feature, index) => (
-                  <li key={index} className="flex items-start">
-                    {feature.included ? (
-                      <Check className="w-5 h-5 text-[var(--rf-green)] mr-2 flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <X className="w-5 h-5 text-gray-300 mr-2 flex-shrink-0 mt-0.5" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {plans.map((plan) => {
+                const isCurrent = currentPlan === plan.id;
+                return (
+                <div 
+                    key={plan.name} 
+                    className={`relative bg-white rounded-[var(--rf-radius-lg)] shadow-lg overflow-hidden border-2 transition-transform hover:-translate-y-2 duration-300 ${plan.color === 'green' ? 'border-[var(--rf-green)] ring-4 ring-green-50 scale-105 z-10' : 'border-transparent'}`}
+                >
+                    {plan.badge && (
+                        <div className="absolute top-0 right-0 left-0 bg-[var(--rf-green)] text-white text-xs font-bold text-center py-1 uppercase tracking-widest">
+                            {plan.badge}
+                        </div>
                     )}
-                    <span className={feature.included ? 'text-[var(--rf-text)]' : 'text-gray-400'}>
-                      {feature.text}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                disabled={plan.ctaDisabled}
-                className={`w-full py-3 rounded-[var(--rf-radius-md)] font-semibold transition-colors ${
-                  plan.ctaDisabled
-                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                    : plan.color === 'green'
-                    ? 'bg-[var(--rf-green)] text-white hover:bg-[#00B548]'
-                    : 'bg-[var(--rf-navy)] text-white hover:bg-[#0d3a5f]'
-                }`}
-              >
-                {plan.cta}
-              </button>
-            </div>
-          ))}
+                    
+                    <div className="p-8 pb-4 text-center">
+                        <h3 className={`font-bold text-lg mb-2 ${plan.color === 'navy' ? 'text-[var(--rf-navy)]' : plan.color === 'green' ? 'text-[var(--rf-green)]' : 'text-gray-500'}`}>
+                            {plan.name}
+                        </h3>
+                        <div className="flex justify-center items-end mb-1">
+                            <span className="text-4xl font-bold text-[var(--rf-navy)]">{plan.price}</span>
+                            {plan.period && <span className="text-gray-400 text-sm mb-1">{plan.period}</span>}
+                        </div>
+                    </div>
+                    
+                    <div className="p-8 pt-4">
+                        <ul className="space-y-3 mb-8">
+                            {plan.features.map((feature, i) => (
+                                <li key={i} className="flex items-start text-sm">
+                                    {feature.included ? (
+                                        <Check className="w-4 h-4 text-[var(--rf-green)] mt-0.5 mr-2 flex-shrink-0" />
+                                    ) : (
+                                        <X className="w-4 h-4 text-gray-300 mt-0.5 mr-2 flex-shrink-0" />
+                                    )}
+                                    <span className={feature.included ? 'text-gray-700' : 'text-gray-400 decoration-slice'}>
+                                        {feature.text}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                        
+                        <button 
+                            onClick={() => changePlan(plan.id)}
+                            disabled={isCurrent}
+                            className={`w-full py-3 rounded-[var(--rf-radius-md)] font-bold transition-colors ${
+                                isCurrent 
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : plan.color === 'green' 
+                                        ? 'bg-[var(--rf-green)] text-white hover:bg-[#00B548] shadow-md'
+                                        : 'bg-[var(--rf-navy)] text-white hover:bg-[#1a3a5f]'
+                            }`}
+                        >
+                            {workingPlan === plan.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : (isCurrent ? 'Current Plan' : `Get ${plan.name}`)}
+                        </button>
+                    </div>
+                </div>
+            )})}
         </div>
-
-        <div className="text-center text-sm text-[var(--rf-muted)]">
-          <p className="mb-2">🔒 Secure checkout powered by PayFast</p>
-          <p>Cancel anytime. No hidden fees. POPIA compliant.</p>
+        
+        <div className="bg-blue-50 rounded-[var(--rf-radius-lg)] p-6 flex items-center justify-between border border-blue-100">
+             <div className="flex items-center">
+                 <div className="p-3 bg-white rounded-full text-blue-500 shadow-sm mr-4">
+                     <Sparkles className="w-6 h-6" />
+                 </div>
+                 <div>
+                     <h4 className="font-bold text-[var(--rf-navy)]">Not sure which plan is right for you?</h4>
+                     <p className="text-sm text-[var(--rf-muted)]">Get a 7-day free trial of Premium to test out all features.</p>
+                 </div>
+             </div>
+             <button onClick={startTrial} disabled={workingPlan === 'trial'} className="px-6 py-2 bg-white text-blue-600 font-bold rounded-[var(--rf-radius-md)] hover:bg-gray-50 border border-blue-200 transaction-colors disabled:opacity-60">
+                 {workingPlan === 'trial' ? 'Starting...' : 'Start Free Trial'}
+             </button>
         </div>
-      </div>
     </div>
   );
 }

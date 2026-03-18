@@ -1,83 +1,152 @@
-import { Link } from 'react-router';
-import { ArrowLeft, Users, Gift, Share2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Users, Gift, Share2, Copy, Trophy } from 'lucide-react';
+import { toast } from 'sonner';
+import { apiCall } from '../lib/supabase';
+import type { Referral } from '../types';
 
 export default function Networking() {
+    const [referrals, setReferrals] = useState<Referral[]>([]);
+    const [referralLink, setReferralLink] = useState('https://recruitfriend.co.za/ref');
+    const [earnings, setEarnings] = useState({ total: 0, pending: 0, available: 0 });
+    const [activeReferrals, setActiveReferrals] = useState(0);
+
+    useEffect(() => {
+        loadReferrals();
+    }, []);
+
+    async function loadReferrals() {
+        try {
+            const { referrals: rows, referralLink: link, earnings: values, stats } = await apiCall('/referrals/my', { requireAuth: true });
+            setReferrals(rows || []);
+            setReferralLink(link || referralLink);
+            setEarnings(values || { total: 0, pending: 0, available: 0 });
+            setActiveReferrals(stats?.active || 0);
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to load referral data');
+        }
+    }
+
+    async function copyLink() {
+        try {
+            await navigator.clipboard.writeText(referralLink);
+            toast.success('Referral link copied');
+        } catch {
+            toast.error('Unable to copy link');
+        }
+    }
+
+    function shareWhatsApp() {
+        const text = encodeURIComponent(`Join me on RecruitFriend: ${referralLink}`);
+        window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
+    }
+
+    function showHowItWorks() {
+        toast.info('Share your link, earn R50 on signup and R500 when your referral gets hired.');
+    }
+
+    async function shareMore() {
+        try {
+            if (navigator.share) {
+                await navigator.share({ title: 'RecruitFriend referral', text: 'Join me on RecruitFriend', url: referralLink });
+            } else {
+                await navigator.clipboard.writeText(referralLink);
+                toast.success('Link copied to clipboard');
+            }
+        } catch {
+            toast.error('Unable to share right now');
+        }
+    }
+
+    const topPerformers = useMemo(() => referrals.slice(0, 5), [referrals]);
+
   return (
-    <div className="min-h-screen bg-[var(--rf-bg)] py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Link to="/seeker/dashboard" className="flex items-center text-[var(--rf-green)] hover:underline mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Link>
-
-        <h1 className="text-3xl font-bold text-[var(--rf-navy)] mb-6 flex items-center">
-          <Users className="w-8 h-8 mr-3" />
-          My RecruitFriend Network
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-[var(--rf-navy)] flex items-center">
+            <Users className="w-6 h-6 mr-3 text-[var(--rf-green)]" />
+            My RecruitFriend Network
         </h1>
+                <button onClick={showHowItWorks} className="text-sm text-[var(--rf-green)] font-semibold hover:underline">
+            How it works?
+        </button>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-gradient-to-r from-[var(--rf-green)] to-[#00B548] text-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8">
-            <Gift className="w-12 h-12 mb-4" />
-            <h2 className="text-2xl font-bold mb-2">Earn with RecruitFriend!</h2>
-            <p className="mb-6">Refer friends and get paid when they sign up, get hired, or post a job.</p>
-            
-            <div className="bg-white bg-opacity-20 rounded-[var(--rf-radius-md)] p-4 mb-4">
-              <div className="text-sm mb-2">Your Referral Link:</div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value="https://recruitfriend.co.za/ref/ABC123"
-                  readOnly
-                  className="flex-1 px-3 py-2 bg-white bg-opacity-30 rounded-[var(--rf-radius-md)] text-white"
-                />
-                <button className="px-4 py-2 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-md)] hover:bg-gray-100 transition-colors font-semibold">
-                  Copy
-                </button>
-              </div>
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gradient-to-br from-[var(--rf-green)] to-[#008f35] text-white rounded-[var(--rf-radius-lg)] shadow-lg p-8 relative overflow-hidden">
+            <div className="relative z-10">
+                <Gift className="w-10 h-10 mb-4 text-white opacity-90" />
+                <h2 className="text-2xl font-bold mb-2">Refer & Earn</h2>
+                <p className="mb-6 opacity-90 text-sm">
+                    Share your unique link. Earn <span className="font-bold">R50</span> when a friend signs up and <span className="font-bold">R500</span> when they get hired!
+                </p>
+                
+                <div className="bg-white/20 backdrop-blur-sm rounded-[var(--rf-radius-md)] p-1 flex items-center mb-4 border border-white/30">
+                    <input
+                        type="text"
+                        value={referralLink}
+                        readOnly
+                        className="flex-1 bg-transparent border-none text-white text-sm px-3 focus:outline-none"
+                    />
+                    <button onClick={copyLink} className="px-4 py-2 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-md)] hover:bg-gray-100 transition-colors font-bold text-xs flex items-center shadow-sm">
+                        <Copy className="w-3 h-3 mr-1" /> Copy
+                    </button>
+                </div>
 
-            <div className="flex space-x-2">
-              <button className="flex-1 px-4 py-2 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-md)] hover:bg-gray-100 transition-colors font-semibold">
-                Share via WhatsApp
-              </button>
-              <button className="flex-1 px-4 py-2 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-md)] hover:bg-gray-100 transition-colors font-semibold">
-                Email
-              </button>
+                <div className="flex gap-2">
+                    <button onClick={shareWhatsApp} className="flex-1 py-2 bg-[#25D366] text-white rounded-[var(--rf-radius-md)] hover:brightness-110 transition-all font-semibold text-sm shadow-md flex items-center justify-center">
+                        WhatsApp
+                    </button>
+                    <button onClick={shareMore} className="flex-1 py-2 bg-white/20 text-white rounded-[var(--rf-radius-md)] hover:bg-white/30 transition-all font-semibold text-sm flex items-center justify-center">
+                        <Share2 className="w-4 h-4 mr-1" /> More
+                    </button>
+                </div>
             </div>
+            <Users className="absolute -bottom-10 -right-10 w-48 h-48 text-white opacity-10" />
           </div>
 
-          <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8">
-            <h3 className="text-xl font-bold text-[var(--rf-navy)] mb-4">Referral Earnings</h3>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div>
-                <div className="text-2xl font-bold text-[var(--rf-navy)]">R0</div>
-                <div className="text-xs text-[var(--rf-muted)]">Pending</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-[var(--rf-green)]">R0</div>
-                <div className="text-xs text-[var(--rf-muted)]">Available</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-[var(--rf-navy)]">R0</div>
-                <div className="text-xs text-[var(--rf-muted)]">Total Earned</div>
-              </div>
-            </div>
+          <div className="space-y-6">
+             {/* Stats */}
+             <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 border-l-4 border-[var(--rf-green)]">
+                    <div className="text-[var(--rf-muted)] text-xs uppercase font-semibold mb-1">Total Earned</div>
+                          <div className="text-2xl font-bold text-[var(--rf-navy)]">R {earnings.total}</div>
+                </div>
+                <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 border-l-4 border-[var(--rf-navy)]">
+                   <div className="text-[var(--rf-muted)] text-xs uppercase font-semibold mb-1">Active Referrals</div>
+                         <div className="text-2xl font-bold text-[var(--rf-navy)]">{activeReferrals}</div>
+                </div>
+             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-[var(--rf-radius-md)]">
-                <span className="text-sm">🥉 Friend Signs Up</span>
-                <span className="font-bold text-[var(--rf-navy)]">R50</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-[var(--rf-radius-md)]">
-                <span className="text-sm">🥈 Friend Gets Hired</span>
-                <span className="font-bold text-[var(--rf-navy)]">R200</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-[var(--rf-radius-md)]">
-                <span className="text-sm">🥇 Friend Posts a Job</span>
-                <span className="font-bold text-[var(--rf-navy)]">R300</span>
-              </div>
-            </div>
+             {/* Recent Activity */}
+             <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 flex-1">
+                <h3 className="font-bold text-[var(--rf-navy)] mb-4 flex items-center">
+                    <Trophy className="w-4 h-4 mr-2 text-yellow-500" />
+                    Top Performers
+                </h3>
+                <div className="space-y-3">
+                                        {topPerformers.length === 0 ? (
+                                            <p className="text-sm text-gray-500 italic">No top performers yet.</p>
+                                        ) : (
+                                            topPerformers.map((r) => (
+                                                <div key={r.id} className="text-sm text-[var(--rf-text)] flex justify-between">
+                                                    <span>{r.referee_email || 'Referral invite'}</span>
+                                                    <span className="font-semibold">{r.status}</span>
+                                                </div>
+                                            ))
+                                        )}
+                </div>
+             </div>
           </div>
+      </div>
+      
+      {/* Network List Table Placeholder */}
+      <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+            <h3 className="font-bold text-[var(--rf-navy)]">Your Connections</h3>
+        </div>
+        <div className="p-8 text-center text-gray-400">
+            <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>{referrals.length ? `${referrals.length} referral activities recorded.` : 'Your network activity will appear here.'}</p>
         </div>
       </div>
     </div>

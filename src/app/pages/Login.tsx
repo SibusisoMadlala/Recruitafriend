@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { useAuth } from '../context/AuthContext';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,9 +17,21 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await signIn(email, password);
+      const { user, profile } = await signIn(email, password);
       toast.success('Welcome back!');
-      navigate('/');
+      
+      const redirect = searchParams.get('redirect');
+      if (redirect) {
+        navigate(redirect);
+        return;
+      }
+      
+      const userType = profile?.userType || user.user_metadata?.userType;
+      if (userType === 'employer') {
+        navigate('/employer/dashboard');
+      } else {
+        navigate('/seeker/dashboard');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in');
     } finally {
@@ -73,9 +86,9 @@ export default function Login() {
                 <input type="checkbox" className="mr-2" />
                 <span className="text-sm text-[var(--rf-muted)]">Remember me</span>
               </label>
-              <a href="#" className="text-sm text-[var(--rf-green)] hover:underline">
+              <Link to="/forgot-password" className="text-sm text-[var(--rf-green)] hover:underline">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <button

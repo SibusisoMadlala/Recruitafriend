@@ -1,60 +1,94 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase, apiCall } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { AuthContext, UserProfile } from './auth-context';
 
-interface UserProfile {
-  id: string;
-  email: string;
-  name: string;
-  userType: 'seeker' | 'employer';
-  subscription: string;
-  [key: string]: any;
+function isProfilesPolicyRecursionError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const maybeError = error as { code?: string; message?: string };
+  const code = String(maybeError.code || '').toUpperCase();
+  const message = String(maybeError.message || '');
+  return code === '42P17' || /infinite recursion detected in policy for relation\s+"profiles"/i.test(message);
 }
-
-interface AuthContextType {
-  user: User | null;
-  profile: UserProfile | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string, userType: 'seeker' | 'employer') => Promise<void>;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchProfile() {
+  async function fetchProfile(accessTokenOverride?: string) {
     try {
-      const { profile: userProfile } = await apiCall('/auth/profile');
+      const { profile: userProfile } = await apiCall('/auth/profile', {
+        requireAuth: true,
+        accessTokenOverride,
+      });
       setProfile(userProfile);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+      return userProfile;
+    } catch (error: any) {
+      const msg = String(error?.message || '');
+      const isPolicyRecursion = /infinite recursion detected in policy for relation\s+"profiles"|42P17/i.test(msg);
+      const isExpectedAuthTransition = /Invalid JWT|Not authenticated|401|Missing authorization header/.test(msg) || isPolicyRecursion;
+
+      if (/Missing authorization header|Invalid JWT/.test(msg) || isPolicyRecursion) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          let profileRow: any = null;
+
+          if (!isPolicyRecursion) {
+            const { data, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', authUser.id)
+              .maybeSingle();
+
+            if (!isProfilesPolicyRecursionError(profileError)) {
+              profileRow = data;
+            }
+          }
+
+          const normalized = profileRow
+            ? {
+                ...profileRow,
+                userType: profileRow.userType ?? profileRow.user_type ?? authUser.user_metadata?.userType ?? 'seeker',
+              }
+            : {
+                id: authUser.id,
+                email: authUser.email || '',
+                name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+                userType: (authUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
+                subscription: authUser.user_metadata?.userType === 'employer' ? 'starter' : 'free',
+              };
+
+          setProfile(normalized as UserProfile);
+          return normalized as UserProfile;
+        }
+      }
+
+      if (!isExpectedAuthTransition) {
+        console.error('Error fetching profile:', error);
+      }
+
+      // Do NOT sign out here — transient JWT errors (especially right after login)
+      // must not trigger a hard logout. Trust onAuthStateChange as the authoritative
+      // source of session validity; it will fire SIGNED_OUT if the session truly ends.
+
       setProfile(null);
+      return null;
     }
   }
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile();
-      }
-      setLoading(false);
-    });
-
-    // Listen for auth changes
+    // onAuthStateChange fires INITIAL_SESSION on attach, which covers the
+    // initial session check. Using a separate getSession() call creates a
+    // race condition where a stale empty-session response can arrive after
+    // signIn and overwrite the signed-in user with null.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile();
+        fetchProfile(session.access_token).finally(() => setLoading(false));
       } else {
         setProfile(null);
+        setLoading(false);
       }
     });
 
@@ -68,8 +102,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     if (error) throw error;
-    setUser(data.user);
-    await fetchProfile();
+    if (!data.user) {
+      throw new Error('Sign in failed: missing user session');
+    }
+
+    // onAuthStateChange fires SIGNED_IN and handles setUser + fetchProfile.
+    // We still need profile data here for Login.tsx to decide which dashboard
+    // to navigate to, so read it directly without duplicating state updates.
+    const token = data.session?.access_token;
+    let resolvedProfile: UserProfile | null = null;
+    let profileRow: any = null;
+
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    if (profileError && !isProfilesPolicyRecursionError(profileError)) {
+      throw profileError;
+    }
+
+    profileRow = profileData;
+
+    if (profileRow) {
+      resolvedProfile = {
+        ...profileRow,
+        userType: profileRow.userType ?? profileRow.user_type ?? data.user.user_metadata?.userType ?? 'seeker',
+      } as UserProfile;
+    } else {
+      resolvedProfile = {
+        id: data.user.id,
+        email: data.user.email || '',
+        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+        userType: (data.user.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
+        subscription: data.user.user_metadata?.userType === 'employer' ? 'starter' : 'free',
+      } as UserProfile;
+    }
+
+    void token; // token used by onAuthStateChange
+    return { user: data.user, profile: resolvedProfile };
   }
 
   async function signUp(email: string, password: string, name: string, userType: 'seeker' | 'employer') {
@@ -106,12 +178,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

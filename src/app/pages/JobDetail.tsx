@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
 import {
@@ -11,7 +11,7 @@ import {
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -34,14 +34,16 @@ export default function JobDetail() {
     }
   }
 
+  const isSeeker = !authLoading && !!user && !!(profile?.userType === 'seeker' || (profile as any)?.user_type === 'seeker');
+
   async function handleQuickApply() {
     if (!user) {
       toast.error('Please login to apply');
-      navigate('/login');
+      navigate('/login?redirect=' + encodeURIComponent(window.location.pathname));
       return;
     }
 
-    if (profile?.userType !== 'seeker') {
+    if (!isSeeker) {
       toast.error('Only job seekers can apply to jobs');
       return;
     }
@@ -284,7 +286,11 @@ export default function JobDetail() {
                   </div>
                 )}
 
-                {user && profile?.userType === 'seeker' ? (
+                {authLoading ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--rf-green)]" />
+                  </div>
+                ) : isSeeker ? (
                   <div className="space-y-3">
                     <button
                       onClick={handleQuickApply}
@@ -311,13 +317,19 @@ export default function JobDetail() {
                       </button>
                     </div>
                   </div>
+                ) : user && profile ? (
+                  <div className="text-center p-4 bg-gray-50 rounded-[var(--rf-radius-md)]">
+                    <p className="text-sm text-[var(--rf-muted)]">
+                      Employer accounts cannot apply for jobs.
+                    </p>
+                  </div>
                 ) : (
                   <div className="text-center p-4 bg-gray-50 rounded-[var(--rf-radius-md)]">
                     <p className="text-sm text-[var(--rf-muted)] mb-3">
                       Please login as a job seeker to apply
                     </p>
                     <Link
-                      to="/login"
+                      to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`}
                       className="inline-block px-6 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold"
                     >
                       Login
