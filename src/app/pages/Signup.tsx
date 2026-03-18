@@ -40,18 +40,18 @@ export default function Signup() {
   return (
     <div className="min-h-[80vh] flex items-center justify-center bg-[var(--rf-bg)] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
-        <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8">
+        <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 sm:p-8">
           <div className="text-center mb-8">
-            <div className="flex items-center justify-center space-x-2 mb-4">
-              <span className="text-3xl font-bold text-[var(--rf-navy)]">Recruit</span>
-              <span className="text-3xl font-bold text-[var(--rf-green)]">Friend</span>
+            <div className="mb-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+              <span className="text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">Recruit</span>
+              <span className="text-2xl font-bold text-[var(--rf-green)] sm:text-3xl">Friend</span>
             </div>
             <h2 className="text-2xl font-bold text-[var(--rf-navy)]">Create Your Account</h2>
             <p className="text-[var(--rf-muted)] mt-2">Join thousands of South Africans finding their dream jobs</p>
           </div>
 
           {/* User Type Selection */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => setUserType('seeker')}

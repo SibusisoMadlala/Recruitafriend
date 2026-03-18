@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import SeekerApplications from '../SeekerApplications';
 import SeekerSavedJobs from '../SeekerSavedJobs';
@@ -80,6 +81,8 @@ describe('Seeker workflow interactions', () => {
   });
 
   it('withdraws an application through API call', async () => {
+    const user = userEvent.setup();
+
     render(
       <MemoryRouter>
         <SeekerApplications />
@@ -88,6 +91,8 @@ describe('Seeker workflow interactions', () => {
 
     const withdrawButton = await screen.findByRole('button', { name: /Withdraw/i });
     fireEvent.click(withdrawButton);
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /^Withdraw$/i }));
 
     await waitFor(() => {
       expect(apiCallMock).toHaveBeenCalledWith('/applications/app-1', expect.objectContaining({ method: 'PUT' }));

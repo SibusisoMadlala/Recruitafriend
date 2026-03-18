@@ -16,11 +16,11 @@ export default function EmployerLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen overflow-x-hidden bg-gray-50">
       <EmployerSidebar />
-      <div className="flex-1 md:ml-64 transition-all duration-300 min-h-screen">
+      <div className="flex min-w-0 flex-1 flex-col pt-16 transition-all duration-300 md:ml-64 md:pt-0 min-h-screen">
           <Navbar />
-          <main className="p-4 md:p-8">
+          <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
             <Outlet />
           </main>
       </div>

@@ -92,21 +92,21 @@ export default function Homepage() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full overflow-x-hidden">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-r from-[var(--rf-navy)] to-[#0d3a5f] text-white py-20">
+      <section className="relative bg-gradient-to-r from-[var(--rf-navy)] to-[#0d3a5f] py-16 text-white sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+          <div className="mb-10 text-center">
+            <h1 className="mb-4 text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
               Find Work with a Friend by Your Side
             </h1>
-            <p className="text-xl text-gray-200">
+            <p className="mx-auto max-w-3xl text-base text-gray-200 sm:text-lg md:text-xl">
               RecruitFriend connects thousands of South African job seekers with top employers every day.
             </p>
           </div>
 
           {/* Search Bar */}
-          <div className="max-w-4xl mx-auto bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-modal-shadow)] p-4">
+          <div className="mx-auto max-w-4xl rounded-[var(--rf-radius-lg)] bg-white p-4 shadow-[var(--rf-modal-shadow)] sm:p-5">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-3 bg-white">
@@ -136,14 +136,14 @@ export default function Homepage() {
               </div>
               <button
                 onClick={handleSearch}
-                className="bg-[var(--rf-green)] text-white px-6 py-3 rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold"
+                className="w-full rounded-[var(--rf-radius-md)] bg-[var(--rf-green)] px-6 py-3 font-semibold text-white transition-colors hover:bg-[#00B548] md:w-auto"
               >
                 Find Jobs
               </button>
             </div>
             
             {/* Popular Tags */}
-            <div className="flex flex-wrap gap-2 mt-4">
+            <div className="mt-4 flex flex-wrap gap-2">
               {popularTags.map((tag) => (
                 <button
                   key={tag}
@@ -164,7 +164,7 @@ export default function Homepage() {
       {/* Stats Bar */}
       <section className="bg-white py-8 border-b border-[var(--rf-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+          <div className="grid grid-cols-1 gap-4 text-center sm:grid-cols-2 md:grid-cols-4 md:gap-6">
             <div>
               <div className="text-3xl font-bold text-[var(--rf-navy)]">{stats.activeJobs.toLocaleString()}+</div>
               <div className="text-[var(--rf-muted)] text-sm mt-1">Jobs Available</div>
@@ -188,10 +188,10 @@ export default function Homepage() {
       {/* Browse by Category */}
       <section className="py-16 bg-[var(--rf-bg)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[var(--rf-navy)] mb-8 text-center">
+          <h2 className="mb-8 text-center text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">
             Explore Jobs by Industry
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
             {industries.map((industry) => {
               const Icon = industry.icon;
               return (
@@ -215,8 +215,8 @@ export default function Homepage() {
       {/* Featured Jobs */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-bold text-[var(--rf-navy)] flex items-center">
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="flex items-center text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">
               Hot Jobs Right Now 🔥
             </h2>
             <Link to="/jobs" className="text-[var(--rf-green)] hover:underline font-semibold">
@@ -240,7 +240,7 @@ export default function Homepage() {
                 
                 <div className="mb-4">
                   <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-2">{job.title}</h3>
-                  <div className="flex items-center space-x-2 text-[var(--rf-muted)] text-sm">
+                  <div className="flex flex-wrap items-center gap-2 text-[var(--rf-muted)] text-sm">
                     <Building2 className="w-4 h-4" />
                     <span>{job.company || 'Company Name'}</span>
                     <CheckCircle className="w-4 h-4 text-[var(--rf-green)]" />
@@ -248,7 +248,7 @@ export default function Homepage() {
                 </div>
 
                 <div className="space-y-2 mb-4">
-                  <div className="flex items-center space-x-2 text-sm text-[var(--rf-muted)]">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--rf-muted)]">
                     <MapPin className="w-4 h-4" />
                     <span>{job.location}</span>
                     {job.remoteType === 'remote' && (
@@ -285,8 +285,8 @@ export default function Homepage() {
       {/* Dual CTA Banner */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[var(--rf-navy)] text-white p-10 rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)]">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="rounded-[var(--rf-radius-lg)] bg-[var(--rf-navy)] p-8 text-white shadow-[var(--rf-card-shadow)] sm:p-10">
               <Users className="w-12 h-12 mb-4 text-[var(--rf-green)]" />
               <h3 className="text-2xl font-bold mb-2">Looking for work?</h3>
               <p className="text-gray-200 mb-6">
@@ -294,13 +294,13 @@ export default function Homepage() {
               </p>
               <Link
                 to="/signup?type=seeker"
-                className="inline-block px-8 py-3 bg-white text-[var(--rf-navy)] rounded-[var(--rf-radius-pill)] hover:bg-gray-100 transition-colors font-semibold"
+                className="inline-flex w-full justify-center rounded-[var(--rf-radius-pill)] bg-white px-8 py-3 font-semibold text-[var(--rf-navy)] transition-colors hover:bg-gray-100 sm:w-auto"
               >
                 Register as Job Seeker
               </Link>
             </div>
             
-            <div className="bg-[var(--rf-green)] text-white p-10 rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)]">
+            <div className="rounded-[var(--rf-radius-lg)] bg-[var(--rf-green)] p-8 text-white shadow-[var(--rf-card-shadow)] sm:p-10">
               <Building2 className="w-12 h-12 mb-4 text-white" />
               <h3 className="text-2xl font-bold mb-2">Looking for talent?</h3>
               <p className="text-green-100 mb-6">
@@ -308,7 +308,7 @@ export default function Homepage() {
               </p>
               <Link
                 to={user ? (profile?.userType === 'employer' ? '/employer/post-job' : '/seeker/dashboard') : '/signup?type=employer'}
-                className="inline-block px-8 py-3 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-pill)] hover:bg-gray-100 transition-colors font-semibold"
+                className="inline-flex w-full justify-center rounded-[var(--rf-radius-pill)] bg-white px-8 py-3 font-semibold text-[var(--rf-green)] transition-colors hover:bg-gray-100 sm:w-auto"
               >
                 {user && profile?.userType === 'employer' ? 'Post a Job' : 'Post a Job Free'}
               </Link>
@@ -320,10 +320,10 @@ export default function Homepage() {
       {/* Testimonials */}
       <section className="py-16 bg-[var(--rf-bg)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[var(--rf-navy)] mb-8 text-center">
+          <h2 className="mb-8 text-center text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">
             What Our Users Say
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             {[
               {
                 name: 'Thabo Mokoena',

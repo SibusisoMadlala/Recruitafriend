@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { 
@@ -15,12 +16,15 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { useState } from 'react';
 
 export function EmployerSidebar() {
   const { profile, signOut } = useAuth();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -53,7 +57,9 @@ export function EmployerSidebar() {
     <>
       {/* Mobile Toggle */}
       <button 
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-[#0A2540] text-white rounded-md"
+        aria-label={isOpen ? 'Close employer navigation' : 'Open employer navigation'}
+        aria-expanded={isOpen}
+        className="fixed left-4 top-3 z-50 rounded-md bg-[#0A2540] p-2 text-white shadow-lg md:hidden"
         onClick={() => setIsOpen(!isOpen)}
       >
         {isOpen ? <X size={24} /> : <Menu size={24} />}
@@ -61,9 +67,9 @@ export function EmployerSidebar() {
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed top-0 left-0 z-40 h-screen w-64 bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
+        fixed top-0 left-0 z-40 h-screen w-64 max-w-[86vw] bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
-        flex flex-col shadow-xl
+        flex flex-col shadow-xl md:shadow-none
       `}>
         {/* Top Section */}
         <div className="p-6 border-b border-gray-700">
