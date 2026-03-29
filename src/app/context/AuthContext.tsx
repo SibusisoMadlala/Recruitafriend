@@ -11,6 +11,29 @@ function isProfilesPolicyRecursionError(error: unknown) {
   return code === '42P17' || /infinite recursion detected in policy for relation\s+"profiles"/i.test(message);
 }
 
+function normalizeEmployerStatus(rawStatus: unknown, userType: unknown) {
+  if (String(userType || '') !== 'employer') return null;
+  const normalized = String(rawStatus || '').trim().toLowerCase();
+  if (['pending_review', 'needs_info', 'approved', 'rejected', 'suspended'].includes(normalized)) {
+    return normalized as 'pending_review' | 'needs_info' | 'approved' | 'rejected' | 'suspended';
+  }
+  return 'pending_review';
+}
+
+function resolveUserType(profileLike: Record<string, any> | null | undefined, authUser?: User | null) {
+  return (profileLike?.userType ?? profileLike?.user_type ?? authUser?.user_metadata?.userType ?? 'seeker') as UserProfile['userType'];
+}
+
+function normalizeProfile(profileLike: Record<string, any>, authUser?: User | null) {
+  const userType = resolveUserType(profileLike, authUser);
+  return {
+    ...profileLike,
+    userType,
+    user_type: profileLike.user_type ?? userType,
+    employer_status: normalizeEmployerStatus(profileLike.employer_status, userType),
+  } as UserProfile;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -22,8 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requireAuth: true,
         accessTokenOverride,
       });
-      setProfile(userProfile);
-      return userProfile;
+      const { data: { user: authUser } } = await supabase.auth.getUser(accessTokenOverride);
+      const normalizedProfile = normalizeProfile(userProfile, authUser);
+      setProfile(normalizedProfile);
+      return normalizedProfile;
     } catch (error: any) {
       const msg = String(error?.message || '');
       const isPolicyRecursion = /infinite recursion detected in policy for relation\s+"profiles"|42P17/i.test(msg);
@@ -47,15 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           const normalized = profileRow
-            ? {
-                ...profileRow,
-                userType: profileRow.userType ?? profileRow.user_type ?? authUser.user_metadata?.userType ?? 'seeker',
-              }
+            ? normalizeProfile(profileRow, authUser)
             : {
                 id: authUser.id,
                 email: authUser.email || '',
                 name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-                userType: (authUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
+                userType: (authUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer' | 'admin',
+                user_type: (authUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer' | 'admin',
+                employer_status: normalizeEmployerStatus(null, authUser.user_metadata?.userType || 'seeker'),
                 subscription: authUser.user_metadata?.userType === 'employer' ? 'starter' : 'free',
               };
 
@@ -113,29 +137,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let resolvedProfile: UserProfile | null = null;
     let profileRow: any = null;
 
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
+    try {
+      const { profile: apiProfile } = await apiCall('/auth/profile', {
+        requireAuth: true,
+        accessTokenOverride: token,
+      });
+      profileRow = apiProfile;
+    } catch (apiProfileError: any) {
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .maybeSingle();
 
-    if (profileError && !isProfilesPolicyRecursionError(profileError)) {
-      throw profileError;
+      if (profileError && !isProfilesPolicyRecursionError(profileError)) {
+        throw profileError;
+      }
+
+      if (!isProfilesPolicyRecursionError(apiProfileError)) {
+        console.warn('Falling back to direct profile lookup after auth/profile bootstrap failed:', apiProfileError);
+      }
+
+      profileRow = profileData;
     }
 
-    profileRow = profileData;
-
     if (profileRow) {
-      resolvedProfile = {
-        ...profileRow,
-        userType: profileRow.userType ?? profileRow.user_type ?? data.user.user_metadata?.userType ?? 'seeker',
-      } as UserProfile;
+      resolvedProfile = normalizeProfile(profileRow, data.user);
     } else {
       resolvedProfile = {
         id: data.user.id,
         email: data.user.email || '',
         name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-        userType: (data.user.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
+        userType: (data.user.user_metadata?.userType || 'seeker') as 'seeker' | 'employer' | 'admin',
+        user_type: (data.user.user_metadata?.userType || 'seeker') as 'seeker' | 'employer' | 'admin',
+        employer_status: normalizeEmployerStatus(null, data.user.user_metadata?.userType || 'seeker'),
         subscription: data.user.user_metadata?.userType === 'employer' ? 'starter' : 'free',
       } as UserProfile;
     }

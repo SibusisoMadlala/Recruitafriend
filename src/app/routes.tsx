@@ -36,6 +36,10 @@ import Signup from './pages/Signup';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
 import EmployerInfo from './pages/EmployerInfo';
+import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
+import AdminLayout from './layouts/AdminLayout';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
 
 export const router = createBrowserRouter([
   {
@@ -73,8 +77,12 @@ export const router = createBrowserRouter([
   
   // Employer Routes (Independent Layout) — protected
   {
+    path: '/employer/onboarding-status',
+    element: <ProtectedRoute role="employer"><EmployerOnboardingStatus /></ProtectedRoute>,
+  },
+  {
     path: '/employer',
-    element: <ProtectedRoute role="employer"><EmployerLayout /></ProtectedRoute>,
+    element: <ProtectedRoute role="employer" requireApprovedEmployer><EmployerLayout /></ProtectedRoute>,
     children: [
         { path: 'dashboard', Component: EmployerDashboard },
         { path: 'profile', Component: EmployerProfile },
@@ -88,6 +96,16 @@ export const router = createBrowserRouter([
         { path: 'subscriptions', Component: EmployerSubscriptions },
         { path: 'applicants/:jobId', Component: EmployerApplicants },
     ]
+  },
+
+  // Admin routes
+  {
+    path: '/admin',
+    element: <ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>,
+    children: [
+      { path: 'dashboard', Component: AdminDashboard },
+      { path: 'onboarding', Component: AdminOnboardingQueue },
+    ],
   },
   
   { path: '*', Component: NotFound },

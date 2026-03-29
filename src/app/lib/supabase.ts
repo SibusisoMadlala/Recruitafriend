@@ -24,6 +24,85 @@ type ApiCallOptions = RequestInit & {
   accessTokenOverride?: string;
 };
 
+const EMPLOYER_STATUS_VALUES = ['pending_review', 'needs_info', 'approved', 'rejected', 'suspended'] as const;
+
+function resolveUserTypeFromProfile(profileLike: Record<string, unknown> | null | undefined, fallback?: unknown) {
+  return String(profileLike?.userType || profileLike?.user_type || fallback || 'seeker').trim().toLowerCase() as 'seeker' | 'employer' | 'admin';
+}
+
+function buildFallbackProfile(effectiveUser: NonNullable<Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user']>) {
+  const userType = resolveUserTypeFromProfile(null, effectiveUser.user_metadata?.userType);
+  return {
+    id: effectiveUser.id,
+    email: effectiveUser.email || '',
+    name: effectiveUser.user_metadata?.name || effectiveUser.email?.split('@')[0] || 'User',
+    user_type: userType,
+    userType: userType,
+    employer_status: userType === 'employer' ? 'pending_review' : null,
+    subscription: userType === 'employer' ? 'starter' : 'free',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function normalizeEmployerStatus(rawStatus: unknown) {
+  const normalized = String(rawStatus || '').trim().toLowerCase();
+  if ((EMPLOYER_STATUS_VALUES as readonly string[]).includes(normalized)) {
+    return normalized as (typeof EMPLOYER_STATUS_VALUES)[number];
+  }
+  return 'pending_review';
+}
+
+function buildEmployerDeniedMessage(status: ReturnType<typeof normalizeEmployerStatus>) {
+  if (status === 'needs_info') return 'Your onboarding requires additional information before access can be granted.';
+  if (status === 'rejected') return 'Your onboarding submission was rejected. Please review guidance and resubmit.';
+  if (status === 'suspended') return 'Your employer account is currently suspended.';
+  return 'Your onboarding is pending review.';
+}
+
+async function assertApprovedEmployer(userId: string) {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('user_type, employer_status')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!profile || profile.user_type !== 'employer') {
+    throw new Error('Not authorized');
+  }
+
+  const status = normalizeEmployerStatus(profile.employer_status);
+  if (status !== 'approved') {
+    throw new Error(buildEmployerDeniedMessage(status));
+  }
+}
+
+async function assertEmployer(userId: string) {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('user_type')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!profile || profile.user_type !== 'employer') {
+    throw new Error('Forbidden');
+  }
+}
+
+async function assertAdmin(userId: string) {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('user_type')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!profile || profile.user_type !== 'admin') {
+    throw new Error('Forbidden');
+  }
+}
+
 function isProfilesPolicyRecursionError(error: { message?: string | null; code?: string | null } | null | undefined) {
   if (!error) return false;
   const code = String(error.code || '').toUpperCase();
@@ -133,6 +212,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   // Kong API gateway has issues verifying newly issued ES256 session tokens, throwing "Invalid JWT".
   // To avoid breaking authenticated features, we intercept and run native equivalent queries here.
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/stats')) {
+    await assertApprovedEmployer(effectiveUser.id);
     const { data: jobs } = await supabase.from('jobs').select('id, status').eq('employer_id', effectiveUser.id);
     const jobIds = (jobs || []).map((j: Record<string, unknown>) => j.id as string);
     const activeListings = (jobs || []).filter((j: Record<string, unknown>) => j.status === 'active').length;
@@ -238,6 +318,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { job: { ...job, employer: employer || null } };
   }
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/jobs')) {
+    await assertApprovedEmployer(effectiveUser.id);
     const { data: jobs } = await supabase.from('jobs').select('*').eq('employer_id', effectiveUser.id).order('created_at', { ascending: false });
     const jobIds = (jobs || []).map((j: Record<string, unknown>) => j.id as string);
     let appCounts: Record<string, number> = {};
@@ -252,7 +333,507 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     const enriched = (jobs || []).map((j: Record<string, unknown>) => ({ ...j, apps: appCounts[j.id as string] || 0 }));
     return { jobs: enriched };
   }
+  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/employer/talent-search') {
+    await assertApprovedEmployer(effectiveUser.id);
+    const params = new URLSearchParams(endpoint.split('?')[1] || '');
+    const search = String(params.get('search') || '').trim().toLowerCase();
+    const location = String(params.get('location') || '').trim();
+    const hasVideo = ['true', '1', 'yes'].includes(String(params.get('hasVideo') || '').toLowerCase());
+    const sort = String(params.get('sort') || 'relevance').toLowerCase();
+    const page = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(params.get('limit') || '50', 10) || 50));
+    const levelSet = new Set(
+      String(params.get('levels') || '')
+        .split(',')
+        .map((l) => l.trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    const { data: callerProfile, error: callerProfileError } = await supabase
+      .from('profiles')
+      .select('user_type')
+      .eq('id', effectiveUser.id)
+      .maybeSingle();
+    if (callerProfileError) throw new Error(callerProfileError.message);
+    if (!callerProfile || callerProfile.user_type !== 'employer') {
+      throw new Error('Not authorized');
+    }
+
+    let query = supabase
+      .from('profiles')
+      .select('id, name, email, headline, summary, location, avatar_url, skills, experience, social_links, updated_at')
+      .eq('user_type', 'seeker');
+
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,headline.ilike.%${search}%,summary.ilike.%${search}%`);
+    }
+
+    if (location) {
+      query = query.ilike('location', `%${location}%`);
+    }
+
+    const { data: profiles, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const estimateYears = (experience: unknown) => {
+      if (!Array.isArray(experience) || experience.length === 0) return 0;
+      const now = Date.now();
+      const parseMonth = (value: unknown) => {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        const parsed = Date.parse(`${value}-01`);
+        return Number.isNaN(parsed) ? null : parsed;
+      };
+
+      let months = 0;
+      for (const item of experience) {
+        if (!item || typeof item !== 'object') continue;
+        const row = item as Record<string, unknown>;
+        const start = parseMonth(row.startDate);
+        const end = parseMonth(row.endDate) ?? now;
+        if (!start || end < start) {
+          months += 12;
+          continue;
+        }
+        months += Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.4375)));
+      }
+      return Math.max(0, Math.round((months / 12) * 10) / 10);
+    };
+
+    const levelForYears = (years: number) => {
+      if (years <= 1) return 'entry';
+      if (years <= 2) return 'junior';
+      if (years <= 5) return 'mid';
+      return 'senior';
+    };
+
+    const candidates = (profiles || []).map((profile: Record<string, unknown>) => {
+      const skills = Array.isArray(profile.skills)
+        ? profile.skills.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+        : [];
+      const yearsOfExperience = estimateYears(profile.experience);
+      const socialLinks = (profile.social_links as Record<string, unknown> | null) || {};
+      const video = (socialLinks.video_introduction || socialLinks.videoIntroduction) as string | undefined;
+
+      return {
+        id: profile.id as string,
+        name: String(profile.name || 'Candidate'),
+        email: String(profile.email || ''),
+        headline: String(profile.headline || ''),
+        summary: String(profile.summary || ''),
+        location: String(profile.location || ''),
+        avatar_url: (profile.avatar_url as string | null) || null,
+        skills,
+        yearsOfExperience,
+        experienceLevel: levelForYears(yearsOfExperience),
+        video_introduction: typeof video === 'string' && video.trim() ? video.trim() : null,
+        updated_at: String(profile.updated_at || ''),
+      };
+    });
+
+    const filtered = candidates.filter((candidate) => {
+      const matchesVideo = !hasVideo || !!candidate.video_introduction;
+      const matchesLevel = levelSet.size === 0 || levelSet.has(candidate.experienceLevel);
+      const matchesSkill =
+        !search || candidate.skills.some((skill) => skill.toLowerCase().includes(search));
+      return matchesVideo && matchesLevel && matchesSkill;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort === 'newest') {
+        return Date.parse(b.updated_at || '') - Date.parse(a.updated_at || '');
+      }
+      if (sort === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      const aScore = (search ? a.skills.filter((s) => s.toLowerCase().includes(search)).length : 0) + (a.yearsOfExperience / 10);
+      const bScore = (search ? b.skills.filter((s) => s.toLowerCase().includes(search)).length : 0) + (b.yearsOfExperience / 10);
+      if (bScore !== aScore) return bScore - aScore;
+      return Date.parse(b.updated_at || '') - Date.parse(a.updated_at || '');
+    });
+
+    const totalCount = sorted.length;
+    const start = (page - 1) * limit;
+    const paged = sorted.slice(start, start + limit);
+
+    return { candidates: paged, count: paged.length, totalCount, page, limit };
+  }
+  if (effectiveUser && method === 'POST' && normalizedEndpoint === '/employer/onboarding/submissions') {
+    await assertEmployer(effectiveUser.id);
+
+    const { data: existingSubmission, error: existingSubmissionError } = await supabase
+      .from('employer_onboarding_submissions')
+      .select('id, status, submitted_at')
+      .eq('employer_id', effectiveUser.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingSubmissionError) throw new Error(existingSubmissionError.message);
+    if (existingSubmission) {
+      throw new Error('Onboarding has already been submitted. It is pending admin review.');
+    }
+
+    const requiredTextFields: Array<[string, unknown]> = [
+      ['companyName', requestBody.companyName],
+      ['contactName', requestBody.contactName],
+      ['contactEmail', requestBody.contactEmail],
+      ['contactPhone', requestBody.contactPhone],
+      ['addressLine1', requestBody.addressLine1],
+      ['city', requestBody.city],
+      ['province', requestBody.province],
+    ];
+
+    const missingFields = requiredTextFields
+      .filter(([, value]) => !String(value || '').trim())
+      .map(([field]) => field);
+
+    const documentsInput = Array.isArray(requestBody.documents) ? requestBody.documents as Array<Record<string, unknown>> : [];
+    const requiredDocTypes = ['registration_proof', 'tax_document'];
+    const missingDocuments = requiredDocTypes.filter((requiredType) =>
+      !documentsInput.some((doc) => String(doc.docType || '') === requiredType && String(doc.storagePath || '').trim())
+    );
+
+    if (missingFields.length > 0 || missingDocuments.length > 0) {
+      throw new Error('Onboarding submission validation failed');
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, employer_status, email, name')
+      .eq('id', effectiveUser.id)
+      .single();
+    if (profileError) throw new Error(profileError.message);
+
+    const nextRevision = 1;
+    const nowIso = new Date().toISOString();
+
+    const { data: submission, error: submissionError } = await supabase
+      .from('employer_onboarding_submissions')
+      .insert({
+        employer_id: effectiveUser.id,
+        revision_no: nextRevision,
+        status: 'pending_review',
+        company_name: String(requestBody.companyName).trim(),
+        registration_number: requestBody.registrationNumber ? String(requestBody.registrationNumber).trim() : null,
+        tax_number: requestBody.taxNumber ? String(requestBody.taxNumber).trim() : null,
+        company_website: requestBody.companyWebsite ? String(requestBody.companyWebsite).trim() : null,
+        business_overview: requestBody.businessOverview ? String(requestBody.businessOverview).trim() : null,
+        contact_name: String(requestBody.contactName).trim(),
+        contact_email: String(requestBody.contactEmail).trim().toLowerCase(),
+        contact_phone: String(requestBody.contactPhone).trim(),
+        address_line1: String(requestBody.addressLine1).trim(),
+        address_line2: requestBody.addressLine2 ? String(requestBody.addressLine2).trim() : null,
+        city: String(requestBody.city).trim(),
+        province: String(requestBody.province).trim(),
+        postal_code: requestBody.postalCode ? String(requestBody.postalCode).trim() : null,
+        country: requestBody.country ? String(requestBody.country).trim() : 'South Africa',
+        submitted_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select('*')
+      .single();
+    if (submissionError) throw new Error(submissionError.message);
+
+    const documentRows = documentsInput.map((doc) => ({
+      submission_id: submission.id,
+      employer_id: effectiveUser.id,
+      doc_type: String(doc.docType || '').trim(),
+      storage_bucket: String(doc.storageBucket || 'employer-onboarding').trim(),
+      storage_path: String(doc.storagePath || '').trim(),
+      original_file_name: doc.originalFileName ? String(doc.originalFileName) : null,
+      mime_type: doc.mimeType ? String(doc.mimeType) : null,
+      file_size_bytes: Number(doc.fileSizeBytes || 0) || null,
+      verification_status: 'pending',
+      updated_at: nowIso,
+    }));
+
+    if (documentRows.length > 0) {
+      const { error: documentsError } = await supabase
+        .from('employer_onboarding_documents')
+        .upsert(documentRows, { onConflict: 'submission_id,doc_type' });
+      if (documentsError) throw new Error(documentsError.message);
+    }
+
+    const { error: profileUpdateError } = await supabase
+      .from('profiles')
+      .update({
+        employer_status: 'pending_review',
+        reviewed_at: null,
+        reviewed_by: null,
+        updated_at: nowIso,
+      })
+      .eq('id', effectiveUser.id);
+    if (profileUpdateError) throw new Error(profileUpdateError.message);
+
+    return {
+      submission,
+      status: 'pending_review',
+      missingFields: [],
+      missingDocuments: [],
+    };
+  }
+  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/employer/onboarding/status') {
+    await assertEmployer(effectiveUser.id);
+
+    const [{ data: profile, error: profileError }, { data: latestSubmission, error: submissionError }, { data: latestAudit, error: auditError }] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, name, email, employer_status, reviewed_at, reviewed_by, live_at')
+        .eq('id', effectiveUser.id)
+        .single(),
+      supabase
+        .from('employer_onboarding_submissions')
+        .select('*')
+        .eq('employer_id', effectiveUser.id)
+        .order('revision_no', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('admin_onboarding_audit_log')
+        .select('id, action, reason, metadata, created_at')
+        .eq('target_employer_id', effectiveUser.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (profileError) throw new Error(profileError.message);
+    if (submissionError) throw new Error(submissionError.message);
+    if (auditError) throw new Error(auditError.message);
+
+    const currentStatus = normalizeEmployerStatus(profile?.employer_status);
+    const guidance = {
+      code:
+        currentStatus === 'needs_info'
+          ? 'EMPLOYER_ONBOARDING_NEEDS_INFO'
+          : currentStatus === 'rejected'
+            ? 'EMPLOYER_ONBOARDING_REJECTED'
+            : currentStatus === 'suspended'
+              ? 'EMPLOYER_ACCOUNT_SUSPENDED'
+              : 'EMPLOYER_ONBOARDING_PENDING',
+      message:
+        currentStatus === 'needs_info'
+          ? 'Your onboarding requires additional information before access can be granted.'
+          : currentStatus === 'rejected'
+            ? 'Your onboarding submission was rejected.'
+            : currentStatus === 'suspended'
+              ? 'Your employer account is currently suspended.'
+              : 'Your onboarding is pending review.',
+      guidance:
+        currentStatus === 'needs_info'
+          ? 'Please open your onboarding status page, review remediation notes, and resubmit the requested details.'
+          : currentStatus === 'rejected'
+            ? 'Review the rejection reason in your onboarding status page and submit a revised application when ready.'
+            : currentStatus === 'suspended'
+              ? 'Contact support or your account reviewer for reactivation guidance.'
+              : 'You will gain access to employer operations once an admin approves your onboarding.',
+    };
+
+    return {
+      employer_status: currentStatus,
+      reviewed_at: profile?.reviewed_at || null,
+      reviewed_by: profile?.reviewed_by || null,
+      live_at: profile?.live_at || null,
+      latest_submission: latestSubmission || null,
+      latest_decision: latestAudit || null,
+      guidance,
+      remediation: {
+        reviewer_notes: latestSubmission?.reviewer_notes || null,
+        instructions: latestSubmission?.remediation_instructions || guidance.guidance,
+      },
+    };
+  }
+  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/admin/onboarding/queue') {
+    await assertAdmin(effectiveUser.id);
+
+    const params = new URLSearchParams(endpoint.split('?')[1] || '');
+    const statusFilter = String(params.get('status') || '').trim().toLowerCase();
+    const minAgeHours = Math.max(0, parseInt(String(params.get('minAgeHours') || '0'), 10) || 0);
+
+    let query = supabase
+      .from('employer_onboarding_submissions')
+      .select('id, employer_id, revision_no, status, company_name, contact_name, contact_email, submitted_at, updated_at, reviewer_notes, remediation_instructions')
+      .order('submitted_at', { ascending: true });
+
+    if ((EMPLOYER_STATUS_VALUES as readonly string[]).includes(statusFilter)) {
+      query = query.eq('status', statusFilter);
+    }
+
+    const { data: rows, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const now = Date.now();
+    const filtered = (rows || []).filter((row: Record<string, unknown>) => {
+      const submittedAt = Date.parse(String(row.submitted_at || ''));
+      if (Number.isNaN(submittedAt)) return minAgeHours === 0;
+      const ageHours = Math.floor((now - submittedAt) / (1000 * 60 * 60));
+      return ageHours >= minAgeHours;
+    });
+
+    const employerIds = [...new Set(filtered.map((row: Record<string, unknown>) => String(row.employer_id || '')))].filter(Boolean);
+    const { data: employerProfiles, error: employerError } = employerIds.length > 0
+      ? await supabase.from('profiles').select('id, name, email, employer_status').in('id', employerIds)
+      : { data: [] as Record<string, unknown>[], error: null };
+
+    if (employerError) throw new Error(employerError.message);
+
+    const employerMap: Record<string, Record<string, unknown>> = {};
+    (employerProfiles || []).forEach((profile: Record<string, unknown>) => {
+      employerMap[String(profile.id)] = profile;
+    });
+
+    const queue = filtered.map((row: Record<string, unknown>) => {
+      const submittedAt = Date.parse(String(row.submitted_at || ''));
+      const ageHours = Number.isNaN(submittedAt) ? null : Math.floor((now - submittedAt) / (1000 * 60 * 60));
+      const employer = employerMap[String(row.employer_id)] || {};
+      return {
+        ...row,
+        age_hours: ageHours,
+        employer_name: employer.name || row.company_name || 'Employer',
+        employer_email: employer.email || row.contact_email || null,
+        employer_status: employer.employer_status || row.status,
+      };
+    });
+
+    return { queue, count: queue.length };
+  }
+  if (effectiveUser && method === 'GET' && /^\/admin\/onboarding\/queue\/[^/]+$/.test(normalizedEndpoint)) {
+    await assertAdmin(effectiveUser.id);
+    const employerId = normalizedEndpoint.split('/').pop();
+    if (!employerId) throw new Error('Employer id is required');
+
+    const [{ data: submission, error: submissionError }, { data: documents, error: docsError }, { data: employer, error: employerError }] = await Promise.all([
+      supabase
+        .from('employer_onboarding_submissions')
+        .select('*')
+        .eq('employer_id', employerId)
+        .order('revision_no', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('employer_onboarding_documents')
+        .select('*')
+        .eq('employer_id', employerId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('profiles')
+        .select('id, name, email, employer_status, reviewed_at, reviewed_by')
+        .eq('id', employerId)
+        .maybeSingle(),
+    ]);
+
+    if (submissionError) throw new Error(submissionError.message);
+    if (docsError) throw new Error(docsError.message);
+    if (employerError) throw new Error(employerError.message);
+    if (!submission) throw new Error('Onboarding submission not found');
+
+    return {
+      submission,
+      documents: documents || [],
+      employer: employer || null,
+    };
+  }
+  if (effectiveUser && method === 'POST' && /^\/admin\/onboarding\/[^/]+\/decision$/.test(normalizedEndpoint)) {
+    await assertAdmin(effectiveUser.id);
+    const employerId = normalizedEndpoint.split('/')[3];
+    if (!employerId) throw new Error('Employer id is required');
+
+    const action = String(requestBody.action || '').trim().toLowerCase();
+    const reason = String(requestBody.reason || '').trim();
+    const reviewerNotes = requestBody.reviewerNotes ? String(requestBody.reviewerNotes).trim() : null;
+    const remediationInstructions = requestBody.remediationInstructions ? String(requestBody.remediationInstructions).trim() : null;
+
+    const actionToStatus: Record<string, typeof EMPLOYER_STATUS_VALUES[number]> = {
+      approve: 'approved',
+      reject: 'rejected',
+      request_info: 'needs_info',
+      suspend: 'suspended',
+      reactivate: 'approved',
+    };
+
+    if (!Object.prototype.hasOwnProperty.call(actionToStatus, action)) {
+      throw new Error('Invalid onboarding action');
+    }
+    if (['reject', 'request_info', 'suspend'].includes(action) && !reason) {
+      throw new Error('Reason is required for this action');
+    }
+
+    const [{ data: targetProfile, error: targetError }, { data: latestSubmission, error: submissionError }] = await Promise.all([
+      supabase.from('profiles').select('id, email, name, employer_status').eq('id', employerId).maybeSingle(),
+      supabase
+        .from('employer_onboarding_submissions')
+        .select('*')
+        .eq('employer_id', employerId)
+        .order('revision_no', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (targetError) throw new Error(targetError.message);
+    if (submissionError) throw new Error(submissionError.message);
+    if (!targetProfile) throw new Error('Employer not found');
+    if (!latestSubmission) throw new Error('No onboarding submission found for employer');
+
+    const statusTo = actionToStatus[action];
+    const statusFrom = normalizeEmployerStatus(targetProfile.employer_status);
+    const nowIso = new Date().toISOString();
+
+    const profileUpdate: Record<string, unknown> = {
+      employer_status: statusTo,
+      reviewed_at: nowIso,
+      reviewed_by: effectiveUser.id,
+      updated_at: nowIso,
+    };
+    if (statusTo === 'approved') {
+      profileUpdate.live_at = nowIso;
+    }
+
+    const { data: updatedProfile, error: profileError } = await supabase
+      .from('profiles')
+      .update(profileUpdate)
+      .eq('id', employerId)
+      .select('id, employer_status, reviewed_at, reviewed_by, live_at')
+      .single();
+    if (profileError) throw new Error(profileError.message);
+
+    const { data: updatedSubmission, error: updateSubmissionError } = await supabase
+      .from('employer_onboarding_submissions')
+      .update({
+        status: statusTo,
+        reviewer_notes: reviewerNotes,
+        remediation_instructions: remediationInstructions,
+        decision_reason: reason || null,
+        updated_at: nowIso,
+      })
+      .eq('id', latestSubmission.id)
+      .select('*')
+      .single();
+    if (updateSubmissionError) throw new Error(updateSubmissionError.message);
+
+    const { error: auditError } = await supabase
+      .from('admin_onboarding_audit_log')
+      .insert({
+        actor_id: effectiveUser.id,
+        target_employer_id: employerId,
+        submission_id: latestSubmission.id,
+        action,
+        reason: reason || null,
+        metadata: {
+          status_from: statusFrom,
+          status_to: statusTo,
+          reviewer_notes: reviewerNotes,
+          remediation_instructions: remediationInstructions,
+        },
+      });
+    if (auditError) throw new Error(auditError.message);
+
+    return {
+      profile: updatedProfile,
+      submission: updatedSubmission,
+      transition: { from: statusFrom, to: statusTo, action },
+    };
+  }
   if (effectiveUser && method === 'POST' && normalizedEndpoint === '/jobs') {
+    await assertApprovedEmployer(effectiveUser.id);
     const title = String(requestBody.title || '').trim();
     if (!title) throw new Error('Job title is required');
     const { data, error } = await supabase
@@ -376,6 +957,9 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     const isSeekerOwner = appRecord.seeker_id === effectiveUser.id;
 
     if (!isEmployer && !isSeekerOwner) throw new Error('Not authorized');
+    if (isEmployer) {
+      await assertApprovedEmployer(effectiveUser.id);
+    }
     if (isSeekerOwner && requestedStatus && requestedStatus !== 'rejected') {
       throw new Error('Seekers can only withdraw applications');
     }
@@ -395,14 +979,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { application };
   }
   if (effectiveUser && method === 'GET' && normalizedEndpoint === '/auth/profile') {
-    const fallbackProfile = {
-      id: effectiveUser.id,
-      email: effectiveUser.email || '',
-      name: effectiveUser.user_metadata?.name || effectiveUser.email?.split('@')[0] || 'User',
-      user_type: (effectiveUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
-      subscription: effectiveUser.user_metadata?.userType === 'employer' ? 'starter' : 'free',
-      updated_at: new Date().toISOString(),
-    };
+    const fallbackProfile = buildFallbackProfile(effectiveUser);
 
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -415,7 +992,17 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     }
 
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    if (profile) return { profile };
+    if (profile) {
+      const userType = resolveUserTypeFromProfile(profile, effectiveUser.user_metadata?.userType);
+      return {
+        profile: {
+          ...profile,
+          user_type: profile.user_type ?? userType,
+          userType,
+          employer_status: userType === 'employer' ? normalizeEmployerStatus(profile.employer_status) : null,
+        },
+      };
+    }
 
     const { data: createdProfile, error: createError } = await supabase
       .from('profiles')
@@ -429,11 +1016,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   if (effectiveUser && method === 'PUT' && normalizedEndpoint === '/auth/profile') {
     const now = new Date().toISOString();
     const fallbackProfile = {
-      id: effectiveUser.id,
-      email: effectiveUser.email || '',
-      name: effectiveUser.user_metadata?.name || effectiveUser.email?.split('@')[0] || 'User',
-      user_type: (effectiveUser.user_metadata?.userType || 'seeker') as 'seeker' | 'employer',
-      subscription: effectiveUser.user_metadata?.userType === 'employer' ? 'starter' : 'free',
+      ...buildFallbackProfile(effectiveUser),
       updated_at: now,
     };
 
@@ -511,6 +1094,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { applications: normalized };
   }
   if (effectiveUser && method === 'GET' && /^\/jobs\/[^/]+\/applications$/.test(normalizedEndpoint)) {
+    await assertApprovedEmployer(effectiveUser.id);
     const jobId = normalizedEndpoint.split('/')[2];
     if (!jobId) throw new Error('jobId is required');
 

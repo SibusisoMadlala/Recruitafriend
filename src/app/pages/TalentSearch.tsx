@@ -1,22 +1,135 @@
-import { useState } from 'react';
-import { 
-  Building2, MapPin, Globe, Upload, CheckCircle, 
-  Linkedin, Facebook, Instagram, Twitter, Bell, Shield, Wallet, Users, Layout, Mail, Link as LinkIcon, Filter, MoreHorizontal,
-  Search, Video, Calendar
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle, MapPin, Search, Video, Briefcase, Loader2, Mail } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Card, CardContent } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
+import { apiCall } from '../lib/supabase';
+import { toast } from 'sonner';
+import { useAuth } from '../context/useAuth';
+
+type ExperienceLevel = 'entry' | 'junior' | 'mid' | 'senior';
+
+interface Candidate {
+   id: string;
+   name: string;
+   email: string;
+   headline: string;
+   summary: string;
+   location: string;
+   avatar_url: string | null;
+   skills: string[];
+   yearsOfExperience: number;
+   experienceLevel: ExperienceLevel;
+   video_introduction: string | null;
+}
+
+const EXPERIENCE_LEVEL_OPTIONS: Array<{ label: string; value: ExperienceLevel }> = [
+   { label: 'Entry Level', value: 'entry' },
+   { label: 'Junior (1-2y)', value: 'junior' },
+   { label: 'Mid-Level (3-5y)', value: 'mid' },
+   { label: 'Senior (5+y)', value: 'senior' },
+];
+
+function normalizeSubscription(value: unknown) {
+   return String(value || '').trim().toLowerCase();
+}
+
+function formatExperience(level: ExperienceLevel, years: number) {
+   if (Number.isFinite(years) && years > 0) {
+      const rounded = Math.round(years * 10) / 10;
+      return `${rounded}y experience`;
+   }
+
+   const map: Record<ExperienceLevel, string> = {
+      entry: 'Entry level',
+      junior: 'Junior',
+      mid: 'Mid-level',
+      senior: 'Senior',
+   };
+
+   return map[level] || 'Experience not specified';
+}
 
 export default function TalentSearch() {
-   // STARTER plan limitation simulation
-   const [isLocked, setIsLocked] = useState(true);
+    const { profile } = useAuth();
+    const subscription = normalizeSubscription(profile?.subscription);
+    const [isLocked, setIsLocked] = useState(
+       subscription === 'starter' || subscription === 'free' || subscription === ''
+    );
 
-   // Empty candidates array
-   const candidates: any[] = [];
+    const [query, setQuery] = useState('');
+    const [locationFilter, setLocationFilter] = useState('');
+    const [selectedLevels, setSelectedLevels] = useState<ExperienceLevel[]>([]);
+    const [hasVideoOnly, setHasVideoOnly] = useState(false);
+    const [sortBy, setSortBy] = useState<'relevance' | 'newest' | 'name'>('relevance');
+
+    const [candidates, setCandidates] = useState<Candidate[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+       if (!profile) return;
+       const current = normalizeSubscription(profile.subscription);
+       const shouldLock = current === 'starter' || current === 'free' || current === '';
+       setIsLocked(shouldLock);
+    }, [profile]);
+
+    const fetchCandidates = useCallback(async () => {
+       if (isLocked) return;
+
+       setLoading(true);
+       try {
+          const params = new URLSearchParams();
+          if (query.trim()) params.set('search', query.trim());
+          if (locationFilter.trim()) params.set('location', locationFilter.trim());
+          if (selectedLevels.length > 0) params.set('levels', selectedLevels.join(','));
+          if (hasVideoOnly) params.set('hasVideo', 'true');
+          params.set('sort', sortBy);
+          params.set('page', '1');
+          params.set('limit', '50');
+
+          const { candidates: rows = [], totalCount: total = 0 } = await apiCall(
+             `/employer/talent-search?${params.toString()}`,
+             { requireAuth: true }
+          );
+
+          setCandidates(rows);
+          setTotalCount(total);
+       } catch (error: any) {
+          toast.error(error.message || 'Failed to search candidates');
+       } finally {
+          setLoading(false);
+       }
+    }, [hasVideoOnly, isLocked, locationFilter, query, selectedLevels, sortBy]);
+
+    useEffect(() => {
+       void fetchCandidates();
+    }, [fetchCandidates]);
+
+    const activeFiltersCount = useMemo(() => {
+       return [
+          query.trim().length > 0,
+          locationFilter.trim().length > 0,
+          selectedLevels.length > 0,
+          hasVideoOnly,
+       ].filter(Boolean).length;
+    }, [hasVideoOnly, locationFilter, query, selectedLevels.length]);
+
+    function toggleLevel(level: ExperienceLevel) {
+       setSelectedLevels((prev) =>
+          prev.includes(level) ? prev.filter((item) => item !== level) : [...prev, level]
+       );
+    }
+
+    function clearFilters() {
+       setQuery('');
+       setLocationFilter('');
+       setSelectedLevels([]);
+       setHasVideoOnly(false);
+       setSortBy('relevance');
+    }
 
    return (
      <div className="space-y-6 h-full flex flex-col relative overflow-hidden">
@@ -59,11 +172,19 @@ export default function TalentSearch() {
                  <div className="relative flex-1">
                     <Search className="absolute left-4 top-3.5 w-5 h-5 text-gray-400" />
                     <Input 
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void fetchCandidates();
+                        }
+                      }}
                       placeholder="Search by skills, job title, qualifications..." 
                       className="pl-12 h-12 bg-white text-[#0A2540] border-none focus:ring-2 focus:ring-[#00C853]"
                     />
                  </div>
-                 <Button className="h-12 px-8 bg-[#00C853] hover:bg-[#00B548] text-white font-bold text-base shadow-lg shadow-green-900/20">
+                 <Button onClick={() => void fetchCandidates()} className="h-12 px-8 bg-[#00C853] hover:bg-[#00B548] text-white font-bold text-base shadow-lg shadow-green-900/20">
                     Search
                  </Button>
               </div>
@@ -79,22 +200,26 @@ export default function TalentSearch() {
            <div className="w-full lg:w-72 space-y-6 flex-shrink-0 bg-white p-6 rounded-xl border border-gray-100 h-fit sticky top-6 shadow-sm">
               <div className="flex items-center justify-between">
                  <h3 className="font-bold text-[#0A2540]">Filters</h3>
-                 <button className="text-xs text-gray-500 hover:text-[#0A2540]">Clear All</button>
+                 <button onClick={clearFilters} className="text-xs text-gray-500 hover:text-[#0A2540]">Clear All</button>
               </div>
               
               <div className="space-y-4">
                  <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">Location</label>
-                    <Input placeholder="City or Province" />
+                    <Input value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} placeholder="City or Province" />
                  </div>
                  
                  <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">Experience Level</label>
                     <div className="space-y-2">
-                       {['Entry Level', 'Junior (1-2y)', 'Mid-Level (3-5y)', 'Senior (5+y)'].map(level => (
+                       {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
                           <div key={level} className="flex items-center space-x-2">
-                             <Checkbox id={level} />
-                             <label htmlFor={level} className="text-sm text-gray-600">{level}</label>
+                             <Checkbox
+                               id={level.value}
+                               checked={selectedLevels.includes(level.value)}
+                               onCheckedChange={() => toggleLevel(level.value)}
+                             />
+                             <label htmlFor={level.value} className="text-sm text-gray-600">{level.label}</label>
                           </div>
                        ))}
                     </div>
@@ -103,29 +228,84 @@ export default function TalentSearch() {
                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
                        <label className="text-sm font-medium text-gray-700">Has Video Intro</label>
-                       <Checkbox />
+                       <Checkbox checked={hasVideoOnly} onCheckedChange={(checked) => setHasVideoOnly(Boolean(checked))} />
                     </div>
                  </div>
 
-                 <Button className="w-full bg-[#0A2540] text-white hover:bg-[#081f36]">Apply Filters</Button>
+                 <Button onClick={() => void fetchCandidates()} className="w-full bg-[#0A2540] text-white hover:bg-[#081f36]">Apply Filters</Button>
               </div>
            </div>
 
            {/* Results Grid */}
            <div className="flex-1 space-y-4">
               <div className="flex justify-between items-center text-sm text-gray-500">
-                 <span>Showing 0 of 0 candidates</span>
-                 <select className="bg-transparent border-none outline-none font-medium text-[#0A2540] cursor-pointer hover:bg-gray-50 rounded px-2 py-1">
-                    <option>Sort by: Relevance</option>
-                    <option>Newest First</option>
+                         <span>Showing {candidates.length} of {totalCount} candidates {activeFiltersCount > 0 ? `(filtered)` : ''}</span>
+                         <select
+                              value={sortBy}
+                              onChange={(event) => setSortBy(event.target.value as 'relevance' | 'newest' | 'name')}
+                              className="bg-transparent border-none outline-none font-medium text-[#0A2540] cursor-pointer hover:bg-gray-50 rounded px-2 py-1"
+                         >
+                              <option value="relevance">Sort by: Relevance</option>
+                              <option value="newest">Newest First</option>
+                              <option value="name">Name (A-Z)</option>
                  </select>
               </div>
 
-              {candidates.length > 0 ? (
+                     {loading ? (
+                         <div className="flex items-center justify-center py-20 bg-white rounded-xl border border-gray-100">
+                              <Loader2 className="w-6 h-6 animate-spin text-[#0A2540]" />
+                              <span className="ml-3 text-sm text-gray-500">Searching candidates...</span>
+                         </div>
+                     ) : candidates.length > 0 ? (
                  candidates.map(candidate => (
                  <Card key={candidate.id} className="border-none shadow-sm hover:shadow-md transition-all hover:border-gray-200 group">
                     <CardContent className="p-6">
-                       {/* Card Content would go here */}
+                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="flex items-start gap-3">
+                                       <Avatar className="h-12 w-12">
+                                          <AvatarFallback className="bg-[#0A2540] text-white">
+                                             {(candidate.name || 'C').split(' ').map((part) => part[0]).join('').slice(0, 2)}
+                                          </AvatarFallback>
+                                       </Avatar>
+                                       <div>
+                                          <h3 className="font-bold text-[#0A2540]">{candidate.name}</h3>
+                                          <p className="text-sm text-gray-500">{candidate.headline || 'No headline provided'}</p>
+                                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                                             <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {candidate.location || 'South Africa'}</span>
+                                             <span className="inline-flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" /> {formatExperience(candidate.experienceLevel, candidate.yearsOfExperience)}</span>
+                                             <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {candidate.email || 'No email listed'}</span>
+                                             {candidate.video_introduction ? (
+                                                <span className="inline-flex items-center gap-1 text-[#00A651]"><Video className="w-3.5 h-3.5" /> Video intro</span>
+                                             ) : null}
+                                          </div>
+                                       </div>
+                                    </div>
+
+                                    {candidate.video_introduction ? (
+                                       <Button
+                                          variant="outline"
+                                          onClick={() => window.open(candidate.video_introduction as string, '_blank', 'noopener,noreferrer')}
+                                       >
+                                          Watch Intro
+                                       </Button>
+                                    ) : null}
+                                 </div>
+
+                                 {candidate.summary ? (
+                                    <p className="mt-4 text-sm text-gray-600 line-clamp-3">{candidate.summary}</p>
+                                 ) : null}
+
+                                 <div className="mt-4 flex flex-wrap gap-2">
+                                    {candidate.skills.length > 0 ? (
+                                       candidate.skills.slice(0, 8).map((skill) => (
+                                          <span key={`${candidate.id}-${skill}`} className="px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">
+                                             {skill}
+                                          </span>
+                                       ))
+                                    ) : (
+                                       <span className="text-xs text-gray-400">No skills listed</span>
+                                    )}
+                                 </div>
                     </CardContent>
                  </Card>
                  ))

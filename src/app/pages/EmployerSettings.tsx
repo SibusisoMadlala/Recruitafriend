@@ -221,6 +221,29 @@ export default function EmployerSettings() {
 
    async function handleTeamSave() {
       await saveSettings(settings, 'team', 'Team invite list saved');
+
+      if (settings.team.invites.length === 0) return;
+
+      try {
+         const result = await apiCall('/email/team-invites/send', {
+            requireAuth: true,
+            method: 'POST',
+            body: JSON.stringify({ emails: settings.team.invites }),
+         });
+
+         const sent = Number(result?.sent || 0);
+         const failed = Number(result?.failed || 0);
+
+         if (sent > 0 && failed === 0) {
+            toast.success(`Invite emails sent (${sent})`);
+         } else if (sent > 0 && failed > 0) {
+            toast.warning(`Sent ${sent} invite email(s), ${failed} failed`);
+         } else if (failed > 0) {
+            toast.error('Unable to send invite emails right now');
+         }
+      } catch (error: any) {
+         toast.error(error?.message || 'Failed to send invite emails');
+      }
    }
 
    function addTeamInvite() {

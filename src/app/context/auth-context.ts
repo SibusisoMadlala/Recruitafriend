@@ -5,7 +5,9 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  userType: 'seeker' | 'employer';
+  userType: 'seeker' | 'employer' | 'admin';
+  user_type?: 'seeker' | 'employer' | 'admin';
+  employer_status?: 'pending_review' | 'needs_info' | 'approved' | 'rejected' | 'suspended' | null;
   subscription: string;
   [key: string]: any;
 }

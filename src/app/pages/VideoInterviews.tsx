@@ -5,6 +5,23 @@ import { toast } from 'sonner';
 import { apiCall } from '../lib/supabase';
 import type { Application } from '../types';
 
+const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
+
+type InterviewMeta = {
+  scheduled_at?: string;
+  link?: string;
+  completed_at?: string;
+};
+
+function parseInterviewMeta(notes?: string | null): InterviewMeta | null {
+  if (!notes || !notes.startsWith(INTERVIEW_PREFIX)) return null;
+  try {
+    return JSON.parse(notes.slice(INTERVIEW_PREFIX.length)) as InterviewMeta;
+  } catch {
+    return null;
+  }
+}
+
 export default function VideoInterviews() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -42,7 +59,12 @@ export default function VideoInterviews() {
   }
 
   const upcomingInterviews = useMemo(
-    () => applications.filter((app) => app.status === 'interview'),
+    () =>
+      applications.filter((app) => {
+        if (app.status !== 'interview') return false;
+        const meta = parseInterviewMeta(app.notes);
+        return !meta?.completed_at;
+      }),
     [applications]
   );
 
@@ -105,14 +127,21 @@ export default function VideoInterviews() {
         {activeTab === 'upcoming' && (
           <div className="grid gap-6">
              {!loading && upcomingInterviews.length > 0 ? (
-                 upcomingInterviews.map((interview) => (
+                 upcomingInterviews.map((interview) => {
+                    const meta = parseInterviewMeta(interview.notes);
+                    const hasScheduledDate = Boolean(meta?.scheduled_at);
+                    const scheduleLabel = hasScheduledDate
+                      ? new Date(meta?.scheduled_at as string).toLocaleString()
+                      : `Updated ${new Date(interview.updated_at || interview.created_at).toLocaleString()}`;
+
+                    return (
                     <div key={interview.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 border-l-4 border-[var(--rf-navy)] flex flex-col md:flex-row md:items-center justify-between gap-4">
                        <div>
                         <h3 className="font-bold text-[var(--rf-navy)] text-lg">{interview.job_title || 'Interview'}</h3>
                         <p className="text-sm text-[var(--rf-muted)] mb-2">{interview.company || 'Company'}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <Calendar className="w-3 h-3 mr-1" />
-                          Updated {new Date(interview.updated_at || interview.created_at).toLocaleString()}
+                          {scheduleLabel}
                         </div>
                        </div>
                        <div className="flex items-center gap-2">
@@ -123,14 +152,20 @@ export default function VideoInterviews() {
                           View Job
                         </button>
                         <button
-                          onClick={() => toast.info('Interview link will appear here once scheduled by recruiter.')}
+                          onClick={() => {
+                            if (!meta?.link) {
+                              toast.info('Interview link will appear here once scheduled by recruiter.');
+                              return;
+                            }
+                            window.open(meta.link, '_blank', 'noopener,noreferrer');
+                          }}
                           className="px-4 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] text-sm font-semibold hover:bg-[#00B548]"
                         >
-                          Join Waiting Room
+                          {meta?.link ? 'Join Interview' : 'Join Waiting Room'}
                         </button>
                        </div>
                     </div>
-                 ))
+                 )})
              ) : (
                 !loading && <div className="text-center py-12 text-gray-500">
                     <Video className="w-12 h-12 mx-auto mb-3 opacity-20" />

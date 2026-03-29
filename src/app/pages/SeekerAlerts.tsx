@@ -64,6 +64,10 @@ export default function SeekerAlerts() {
       setAlerts((prev) => [alert, ...prev]);
       setForm({ keywords: '', location: 'All of South Africa', minSalary: '', frequency: 'daily' });
       toast.success('Alert created');
+
+      if (String(alert?.frequency || '').toLowerCase() === 'immediately') {
+        await apiCall('/alerts/dispatch', { method: 'POST', requireAuth: true });
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to create alert');
     }
@@ -88,6 +92,10 @@ export default function SeekerAlerts() {
       setAlerts((prev) => prev.map((a) => (a.id === id ? alert : a)));
       setEditingId(null);
       toast.success('Alert updated');
+
+      if (String(alert?.frequency || '').toLowerCase() === 'immediately' && alert?.active) {
+        await apiCall('/alerts/dispatch', { method: 'POST', requireAuth: true });
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to update alert');
     } finally {
@@ -112,6 +120,13 @@ export default function SeekerAlerts() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-3xl font-bold text-[var(--rf-navy)]">Job Alerts</h1>
+        <button
+          type="button"
+          onClick={() => apiCall('/alerts/dispatch', { method: 'POST', requireAuth: true }).then(() => toast.success('Alert dispatch started')).catch((error: any) => toast.error(error?.message || 'Failed to dispatch alerts'))}
+          className="text-sm bg-white border border-[var(--rf-border)] px-3 py-1.5 rounded-[var(--rf-radius-md)] hover:bg-gray-50"
+        >
+          Dispatch due alerts
+        </button>
       </div>
 
       {/* Create New Alert */}

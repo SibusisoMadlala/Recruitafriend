@@ -17,14 +17,49 @@ import {
   X
 } from 'lucide-react';
 
-export function EmployerSidebar() {
+interface EmployerSidebarProps {
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showMobileToggle?: boolean;
+}
+
+export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMobileToggle = true }: EmployerSidebarProps = {}) {
   const { profile, signOut } = useAuth();
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+  const [uncontrolledIsOpen, setUncontrolledIsOpen] = useState(false);
+  const isOpen = controlledIsOpen ?? uncontrolledIsOpen;
+
+  const setIsOpen = (next: boolean) => {
+    if (onOpenChange) {
+      onOpenChange(next);
+      return;
+    }
+
+    setUncontrolledIsOpen(next);
+  };
 
   useEffect(() => {
     setIsOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -56,18 +91,20 @@ export function EmployerSidebar() {
   return (
     <>
       {/* Mobile Toggle */}
-      <button 
-        aria-label={isOpen ? 'Close employer navigation' : 'Open employer navigation'}
-        aria-expanded={isOpen}
-        className="fixed left-4 top-3 z-50 rounded-md bg-[#0A2540] p-2 text-white shadow-lg md:hidden"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
+      {showMobileToggle && (
+        <button 
+          aria-label={isOpen ? 'Close employer navigation' : 'Open employer navigation'}
+          aria-expanded={isOpen}
+          className="fixed left-4 top-3 z-50 rounded-md bg-[#0A2540] p-2 text-white shadow-lg md:hidden"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      )}
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed top-0 left-0 z-40 h-screen w-64 max-w-[86vw] bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
+        fixed top-0 left-0 z-50 h-screen w-64 max-w-[86vw] bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
         flex flex-col shadow-xl md:shadow-none
       `}>
@@ -139,7 +176,7 @@ export function EmployerSidebar() {
       {/* Overlay for mobile */}
       {isOpen && (
         <div 
-          className="md:hidden fixed inset-0 bg-black/50 z-30"
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsOpen(false)}
         />
       )}

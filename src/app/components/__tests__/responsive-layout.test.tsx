@@ -6,8 +6,10 @@ import userEvent from '@testing-library/user-event';
 import { Navbar } from '../Navbar';
 import { EmployerSidebar } from '../EmployerSidebar';
 import SeekerLayout from '../../layouts/SeekerLayout';
+import EmployerLayout from '../../layouts/EmployerLayout';
 import Signup from '../../pages/Signup';
 import Homepage from '../../pages/Homepage';
+import EmployerDashboard from '../../pages/EmployerDashboard';
 import EmployerApplicants from '../../pages/EmployerApplicants';
 
 const apiCallMock = vi.fn(async (endpoint: string) => {
@@ -29,6 +31,9 @@ const apiCallMock = vi.fn(async (endpoint: string) => {
         },
       ],
     };
+  }
+  if (endpoint === '/employer/stats') {
+    return { activeListings: 2, totalApplications: 5, shortlisted: 1, interviewsToday: 0, cvViews: 3 };
   }
   if (endpoint === '/employer/jobs') {
     return { jobs: [{ id: 'job-1', title: 'Frontend Engineer', apps: 1 }] };
@@ -166,6 +171,44 @@ describe('responsive layout regression coverage', () => {
     expect(employerToggle).toHaveAttribute('aria-expanded', 'false');
     await user.click(employerToggle);
     expect(employerToggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps employer shell composition deterministic across mobile and desktop widths', async () => {
+    const user = userEvent.setup();
+    mockAuthState.user = { id: 'user-2', user_metadata: { userType: 'employer' } };
+    mockAuthState.profile = { name: 'Acme Ltd', userType: 'employer', subscription: 'starter' };
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/employer/dashboard']}>
+        <Routes>
+          <Route path="/employer" element={<EmployerLayout />}>
+            <Route path="dashboard" element={<EmployerDashboard />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Welcome back, Acme Ltd/i);
+
+    expect(container.querySelector('.pt-16')).toBeNull();
+    expect(screen.queryByLabelText(/open navigation menu/i)).not.toBeInTheDocument();
+
+    const employerToggle = screen.getByLabelText(/open employer navigation/i);
+    expect(employerToggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(employerToggle);
+
+    expect(screen.getByLabelText(/close employer navigation/i)).toHaveAttribute('aria-expanded', 'true');
+    expect(document.body.style.overflow).toBe('hidden');
+
+    setViewport(1280);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/open employer navigation/i)).toHaveAttribute('aria-expanded', 'false');
+      expect(document.body.style.overflow).toBe('');
+    });
+
+    expect(container.querySelector('.md\\:ml-64')).not.toBeNull();
   });
 
   it('uses stack-first responsive layouts on homepage and signup', async () => {

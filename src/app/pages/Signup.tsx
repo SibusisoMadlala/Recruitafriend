@@ -29,7 +29,7 @@ export default function Signup() {
     try {
       await signUp(email, password, name, userType);
       toast.success('Account created successfully!');
-      navigate(userType === 'seeker' ? '/seeker/dashboard' : '/employer/dashboard');
+      navigate(userType === 'seeker' ? '/seeker/dashboard' : '/employer/onboarding-status');
     } catch (error: any) {
       toast.error(error.message || 'Failed to create account');
     } finally {
@@ -56,14 +56,14 @@ export default function Signup() {
               type="button"
               onClick={() => setUserType('seeker')}
               className={`p-4 rounded-[var(--rf-radius-md)] border-2 transition-all ${
-                userType === 'seeker'
-                  ? 'border-[var(--rf-green)] bg-[var(--rf-green)] bg-opacity-10'
-                  : 'border-[var(--rf-border)] hover:border-[var(--rf-green)]'
+              userType === 'seeker'
+                ? 'border-[var(--rf-green)] bg-[var(--rf-green)] bg-opacity-20'
+                : 'border-[var(--rf-border)] hover:border-[var(--rf-green)] bg-opacity-10'
               }`}
             >
-              <Users className={`w-6 h-6 mx-auto mb-2 ${userType === 'seeker' ? 'text-[var(--rf-green)]' : 'text-[var(--rf-muted)]'}`} />
-              <div className={`text-sm font-semibold ${userType === 'seeker' ? 'text-[var(--rf-green)]' : 'text-[var(--rf-text)]'}`}>
-                Job Seeker
+              <Users className={`w-6 h-6 mx-auto mb-2 ${userType === 'seeker' ? 'text-white' : 'text-[var(--rf-muted)]'}`} />
+              <div className={`text-sm font-semibold ${userType === 'seeker' ? 'text-white' : 'text-[var(--rf-text)]'}`}>
+              Job Seeker
               </div>
             </button>
             
@@ -71,14 +71,14 @@ export default function Signup() {
               type="button"
               onClick={() => setUserType('employer')}
               className={`p-4 rounded-[var(--rf-radius-md)] border-2 transition-all ${
-                userType === 'employer'
-                  ? 'border-[var(--rf-green)] bg-[var(--rf-green)] bg-opacity-10'
-                  : 'border-[var(--rf-border)] hover:border-[var(--rf-green)]'
+              userType === 'employer'
+              ? 'border-[var(--rf-green)] bg-[var(--rf-green)] bg-opacity-10'
+              : 'border-[var(--rf-border)] hover:border-[var(--rf-green)] bg-opacity-0'
               }`}
             >
-              <Building2 className={`w-6 h-6 mx-auto mb-2 ${userType === 'employer' ? 'text-[var(--rf-green)]' : 'text-[var(--rf-muted)]'}`} />
-              <div className={`text-sm font-semibold ${userType === 'employer' ? 'text-[var(--rf-green)]' : 'text-[var(--rf-text)]'}`}>
-                Employer
+              <Building2 className={`w-6 h-6 mx-auto mb-2 ${userType === 'employer' ? 'text-white' : 'text-[var(--rf-muted)]'}`} />
+              <div className={`text-sm font-semibold ${userType === 'employer' ? 'text-white' : 'text-[var(--rf-text)]'}`}>
+              Employer
               </div>
             </button>
           </div>

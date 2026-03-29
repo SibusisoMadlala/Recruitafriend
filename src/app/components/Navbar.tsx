@@ -1,19 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { LogOut, Menu, X } from 'lucide-react';
 
-export function Navbar() {
+interface NavbarProps {
+  hideMobileMenuToggle?: boolean;
+  fullWidth?: boolean;
+  className?: string;
+  mobileLeading?: ReactNode;
+}
+
+export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, className = '', mobileLeading }: NavbarProps) {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const userRole = String(profile?.userType || (profile as Record<string, unknown> | null)?.user_type || user?.user_metadata?.userType || '').toLowerCase();
+
   const dashboardPath =
-    profile?.userType === 'employer' || user?.user_metadata?.userType === 'employer'
+    userRole === 'admin'
+      ? '/admin/dashboard'
+      : userRole === 'employer'
       ? '/employer/dashboard'
       : '/seeker/dashboard';
 
-  const homePath = profile?.userType === 'seeker' ? '/seeker/dashboard' : '/';
+  const homePath = userRole === 'seeker' ? '/seeker/dashboard' : userRole === 'admin' ? '/admin/dashboard' : '/';
 
   const navItems = useMemo(
     () => [
@@ -23,6 +34,12 @@ export function Navbar() {
     ],
     [dashboardPath, user],
   );
+
+  useEffect(() => {
+    if (hideMobileMenuToggle && isMobileMenuOpen) {
+      setIsMobileMenuOpen(false);
+    }
+  }, [hideMobileMenuToggle, isMobileMenuOpen]);
 
   useEffect(() => {
     if (!isMobileMenuOpen) return;
@@ -51,16 +68,20 @@ export function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-50 bg-white shadow-[var(--rf-nav-shadow)]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className={`sticky top-0 z-50 bg-white shadow-[var(--rf-nav-shadow)] ${className}`}>
+      <div className={`${fullWidth ? 'w-full' : 'max-w-7xl mx-auto'} px-4 sm:px-6 lg:px-8`}>
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link to={homePath} className="flex min-w-0 items-center space-x-2" onClick={() => setIsMobileMenuOpen(false)}>
-            <div className="flex items-center">
-              <span className="text-xl font-bold text-[var(--rf-navy)] sm:text-2xl">Recruit</span>
-              <span className="text-xl font-bold text-[var(--rf-green)] sm:text-2xl">Friend</span>
-            </div>
-          </Link>
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {mobileLeading && <div className="md:hidden">{mobileLeading}</div>}
+
+            {/* Logo */}
+            <Link to={homePath} className="flex min-w-0 items-center space-x-2" onClick={() => setIsMobileMenuOpen(false)}>
+              <div className="flex items-center">
+                <span className="text-xl font-bold text-[var(--rf-navy)] sm:text-2xl">Recruit</span>
+                <span className="text-xl font-bold text-[var(--rf-green)] sm:text-2xl">Friend</span>
+              </div>
+            </Link>
+          </div>
 
           {/* Center Navigation */}
           <div className="hidden md:flex items-center space-x-8">
@@ -103,19 +124,21 @@ export function Navbar() {
             )}
           </div>
 
-          <button
-            type="button"
-            aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            aria-expanded={isMobileMenuOpen}
-            className="inline-flex items-center justify-center rounded-[var(--rf-radius-md)] p-2 text-[var(--rf-navy)] transition-colors hover:bg-gray-100 md:hidden"
-            onClick={() => setIsMobileMenuOpen((open) => !open)}
-          >
-            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {!hideMobileMenuToggle && (
+            <button
+              type="button"
+              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isMobileMenuOpen}
+              className="inline-flex items-center justify-center rounded-[var(--rf-radius-md)] p-2 text-[var(--rf-navy)] transition-colors hover:bg-gray-100 md:hidden"
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+            >
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          )}
         </div>
       </div>
 
-      {isMobileMenuOpen && (
+      {!hideMobileMenuToggle && isMobileMenuOpen && (
         <>
           <div className="fixed inset-0 top-16 z-40 bg-[rgba(10,37,64,0.45)] md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
           <div className="absolute inset-x-0 top-16 z-50 border-t border-gray-100 bg-white shadow-lg md:hidden">

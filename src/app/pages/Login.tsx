@@ -4,6 +4,10 @@ import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
+function resolveUserType(profile: Record<string, any> | null | undefined, fallback: unknown) {
+  return String(profile?.userType || profile?.user_type || fallback || 'seeker').toLowerCase();
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -26,8 +30,13 @@ export default function Login() {
         return;
       }
       
-      const userType = profile?.userType || user.user_metadata?.userType;
-      if (userType === 'employer') {
+      const userType = resolveUserType(profile, user.user_metadata?.userType);
+      const employerStatus = String(profile?.employer_status || '').toLowerCase();
+      if (userType === 'admin') {
+        navigate('/admin/dashboard');
+      } else if (userType === 'employer' && employerStatus !== 'approved') {
+        navigate('/employer/onboarding-status');
+      } else if (userType === 'employer') {
         navigate('/employer/dashboard');
       } else {
         navigate('/seeker/dashboard');

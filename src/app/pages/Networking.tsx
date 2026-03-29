@@ -9,6 +9,8 @@ export default function Networking() {
     const [referralLink, setReferralLink] = useState('https://recruitfriend.co.za/ref');
     const [earnings, setEarnings] = useState({ total: 0, pending: 0, available: 0 });
     const [activeReferrals, setActiveReferrals] = useState(0);
+    const [refereeEmail, setRefereeEmail] = useState('');
+    const [sendingInvite, setSendingInvite] = useState(false);
 
     useEffect(() => {
         loadReferrals();
@@ -57,6 +59,34 @@ export default function Networking() {
         }
     }
 
+    async function sendReferralInvite() {
+        const email = refereeEmail.trim().toLowerCase();
+        if (!email) {
+            toast.error('Please enter an email address');
+            return;
+        }
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+            toast.error('Please enter a valid email address');
+            return;
+        }
+
+        setSendingInvite(true);
+        try {
+            await apiCall('/referrals', {
+                requireAuth: true,
+                method: 'POST',
+                body: JSON.stringify({ refereeEmail: email }),
+            });
+            toast.success('Referral invite sent');
+            setRefereeEmail('');
+            await loadReferrals();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to send referral invite');
+        } finally {
+            setSendingInvite(false);
+        }
+    }
+
     const topPerformers = useMemo(() => referrals.slice(0, 5), [referrals]);
 
   return (
@@ -100,6 +130,24 @@ export default function Networking() {
                         <Share2 className="w-4 h-4 mr-1" /> More
                     </button>
                 </div>
+
+                <div className="mt-4 space-y-2">
+                    <input
+                        type="email"
+                        value={refereeEmail}
+                        onChange={(e) => setRefereeEmail(e.target.value)}
+                        placeholder="friend@example.com"
+                        className="w-full bg-white/20 text-white placeholder:text-white/70 rounded-[var(--rf-radius-md)] px-3 py-2 border border-white/30 focus:outline-none"
+                    />
+                    <button
+                        type="button"
+                        onClick={sendReferralInvite}
+                        disabled={sendingInvite}
+                        className="w-full py-2 bg-white text-[var(--rf-green)] rounded-[var(--rf-radius-md)] hover:bg-gray-100 transition-all font-semibold text-sm disabled:opacity-70"
+                    >
+                        {sendingInvite ? 'Sending invite...' : 'Send referral invite email'}
+                    </button>
+                </div>
             </div>
             <Users className="absolute -bottom-10 -right-10 w-48 h-48 text-white opacity-10" />
           </div>
@@ -130,7 +178,10 @@ export default function Networking() {
                                             topPerformers.map((r) => (
                                                 <div key={r.id} className="text-sm text-[var(--rf-text)] flex justify-between">
                                                     <span>{r.referee_email || 'Referral invite'}</span>
-                                                    <span className="font-semibold">{r.status}</span>
+                                                    <span className="font-semibold">
+                                                        {r.status}
+                                                        {r.invite_email_status ? ` • email: ${r.invite_email_status}` : ''}
+                                                    </span>
                                                 </div>
                                             ))
                                         )}

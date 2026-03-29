@@ -3,7 +3,7 @@ import { useAuth } from '../context/useAuth';
 import { FileText, Download, Upload, RefreshCcw, Eye, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
-import type { CVFile, CVSettings } from '../types';
+import type { CVFile, CVSettings, EducationItem, ExperienceItem } from '../types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,47 @@ export default function SeekerCV() {
   const [editFileSize, setEditFileSize] = useState('0');
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
 
+  const experienceHistory = useMemo<ExperienceItem[]>(() => {
+    return Array.isArray(profile?.experience) ? profile.experience : [];
+  }, [profile?.experience]);
+
+  const educationHistory = useMemo<EducationItem[]>(() => {
+    return Array.isArray(profile?.education) ? profile.education : [];
+  }, [profile?.education]);
+
+  const profileSkills = useMemo<string[]>(() => {
+    return Array.isArray(profile?.skills)
+      ? profile.skills.filter((skill: unknown): skill is string => typeof skill === 'string' && skill.trim().length > 0)
+      : [];
+  }, [profile?.skills]);
+
+  const templateClasses = useMemo(() => {
+    if (settings.template === 'modern') {
+      return {
+        wrapper: 'border-l-4 border-[var(--rf-green)]',
+        name: 'tracking-tight',
+        sectionHeading: 'text-[var(--rf-green)] border-b border-[var(--rf-green)]/30',
+        skillChip: 'bg-green-50 text-green-700 border border-green-200',
+      };
+    }
+
+    if (settings.template === 'bold') {
+      return {
+        wrapper: 'bg-gradient-to-b from-slate-50 to-white border border-slate-200',
+        name: 'uppercase tracking-wide',
+        sectionHeading: 'text-[#0A2540] border-b-2 border-[#0A2540]',
+        skillChip: 'bg-[#0A2540] text-white border border-[#0A2540]',
+      };
+    }
+
+    return {
+      wrapper: '',
+      name: '',
+      sectionHeading: 'text-[var(--rf-navy)] border-b border-gray-200',
+      skillChip: 'bg-gray-100 text-[var(--rf-navy)] border border-gray-200',
+    };
+  }, [settings.template]);
+
   useEffect(() => {
     loadCVData();
   }, []);
@@ -63,6 +104,8 @@ export default function SeekerCV() {
 
   async function saveSettings(next: Partial<CVSettings>) {
     setSaving(true);
+    const previous = settings;
+    setSettings((prev) => ({ ...prev, ...next }));
     try {
       const payload = { ...settings, ...next };
       const { settings: updated } = await apiCall('/cv/settings', {
@@ -72,6 +115,7 @@ export default function SeekerCV() {
       setSettings((prev) => ({ ...prev, ...updated }));
       toast.success('CV settings updated');
     } catch (error: any) {
+      setSettings(previous);
       toast.error(error.message || 'Failed to update CV settings');
     } finally {
       setSaving(false);
@@ -171,61 +215,95 @@ export default function SeekerCV() {
   const currentFile = useMemo(() => files[0], [files]);
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16))] gap-6">
+    <div className="flex flex-col gap-4 lg:h-[calc(100vh-theme(spacing.16))] lg:flex-row lg:gap-6">
       {/* Left Panel: CV Preview */}
-      <div className="w-3/5 bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8 overflow-y-auto relative">
+      <div className={`w-full bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-4 sm:p-6 lg:w-3/5 lg:p-8 lg:overflow-y-auto relative transition-all ${templateClasses.wrapper}`}>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
-          <span className="text-9xl font-bold -rotate-45 text-black">RecruitFriend</span>
+          <span className="text-6xl sm:text-8xl lg:text-9xl font-bold -rotate-45 text-black">RecruitFriend</span>
         </div>
         
         {/* CV Header */}
-        <div className="border-b-2 border-[var(--rf-navy)] pb-6 mb-8">
-          <h1 className="text-4xl font-bold text-[var(--rf-navy)] mb-2">{profile?.name || 'Your Name'}</h1>
-          <div className="text-[var(--rf-muted)] flex flex-wrap gap-4 text-sm">
+        <div className="border-b-2 border-[var(--rf-navy)] pb-4 sm:pb-6 mb-6 sm:mb-8">
+          <h1 className={`text-2xl sm:text-3xl lg:text-4xl font-bold text-[var(--rf-navy)] mb-2 ${templateClasses.name}`}>{profile?.name || 'Your Name'}</h1>
+          <div className="text-[var(--rf-muted)] flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
             <span>{profile?.email || 'email@example.com'}</span>
-            <span>•</span>
+            <span className="hidden sm:inline">•</span>
             <span>{profile?.phone || '+27 00 000 0000'}</span>
-            <span>•</span>
+            <span className="hidden sm:inline">•</span>
             <span>{profile?.location || 'Location'}</span>
           </div>
+          <p className="mt-3 text-xs text-gray-400">Template: {settings.template.charAt(0).toUpperCase() + settings.template.slice(1)}</p>
         </div>
 
         {/* CV Content Sections */}
         <div className="space-y-8">
           <section>
-            <h3 className="text-lg font-bold text-[var(--rf-navy)] uppercase tracking-wider border-b border-gray-200 pb-2 mb-4">Professional Summary</h3>
+            <h3 className={`text-lg font-bold uppercase tracking-wider pb-2 mb-4 ${templateClasses.sectionHeading}`}>Professional Summary</h3>
             <p className="text-[var(--rf-text)] leading-relaxed">
-              {profile?.summary || 'No summary added yet. update your profile to see your summary here.'}
+              {profile?.summary || 'No summary added yet. Update your profile to see your summary here.'}
             </p>
           </section>
 
           <section>
-            <h3 className="text-lg font-bold text-[var(--rf-navy)] uppercase tracking-wider border-b border-gray-200 pb-2 mb-4">Experience</h3>
+            <h3 className={`text-lg font-bold uppercase tracking-wider pb-2 mb-4 ${templateClasses.sectionHeading}`}>Experience</h3>
             <div className="space-y-6">
-              {/* Dynamic Experience would go here */}
-              <p className="text-gray-400 italic">No experience added.</p>
+              {experienceHistory.length > 0 ? (
+                experienceHistory.map((exp, index) => (
+                  <div key={exp.id || `${exp.company}-${exp.title}-${index}`}>
+                    <p className="font-semibold text-[var(--rf-navy)]">{exp.title || 'Role'}</p>
+                    <p className="text-sm text-gray-600">{exp.company || 'Company'}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {exp.startDate || 'Start date not set'} {exp.endDate ? `→ ${exp.endDate}` : '→ Present'}
+                    </p>
+                    {exp.description ? <p className="text-sm text-gray-600 mt-2">{exp.description}</p> : null}
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400 italic">No experience added.</p>
+              )}
             </div>
           </section>
 
           <section>
-            <h3 className="text-lg font-bold text-[var(--rf-navy)] uppercase tracking-wider border-b border-gray-200 pb-2 mb-4">Education</h3>
+            <h3 className={`text-lg font-bold uppercase tracking-wider pb-2 mb-4 ${templateClasses.sectionHeading}`}>Education</h3>
             <div>
-              {/* Dynamic Education would go here */}
-              <p className="text-gray-400 italic">No education added.</p>
+              {educationHistory.length > 0 ? (
+                <div className="space-y-4">
+                  {educationHistory.map((edu, index) => (
+                    <div key={edu.id || `${edu.institution}-${edu.degree}-${index}`}>
+                      <p className="font-semibold text-[var(--rf-navy)]">{edu.degree || 'Qualification'}</p>
+                      <p className="text-sm text-gray-600">{edu.institution || 'Institution'}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {edu.startDate || 'Start date not set'} {edu.endDate ? `→ ${edu.endDate}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 italic">No education added.</p>
+              )}
             </div>
           </section>
 
           <section>
-            <h3 className="text-lg font-bold text-[var(--rf-navy)] uppercase tracking-wider border-b border-gray-200 pb-2 mb-4">Skills</h3>
+            <h3 className={`text-lg font-bold uppercase tracking-wider pb-2 mb-4 ${templateClasses.sectionHeading}`}>Skills</h3>
             <div className="flex flex-wrap gap-2">
-               <p className="text-gray-400 italic">No skills added.</p>
+              {profileSkills.length > 0 ? (
+                profileSkills.map((skill) => (
+                  <span key={skill} className={`px-2.5 py-1 rounded-full text-xs ${templateClasses.skillChip}`}>
+                    {skill}
+                  </span>
+                ))
+              ) : (
+                <p className="text-gray-400 italic">No skills added.</p>
+              )}
             </div>
           </section>
         </div>
       </div>
 
       {/* Right Panel: Actions */}
-      <div className="w-2/5 space-y-6">
+      <div className="w-full space-y-4 sm:space-y-6 lg:w-2/5">
         <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6">
           <h3 className="font-bold text-[var(--rf-navy)] mb-4 flex items-center">
             <Download className="w-5 h-5 mr-2 text-[var(--rf-green)]" />
@@ -236,7 +314,7 @@ export default function SeekerCV() {
           </button>
           
           <h4 className="text-sm font-semibold text-[var(--rf-navy)] mb-3">Choose Template</h4>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <button onClick={() => saveSettings({ template: 'classic' })} className={`border-2 rounded p-2 text-center cursor-pointer ${settings.template === 'classic' ? 'border-[var(--rf-green)] bg-green-50' : 'border-gray-200 hover:border-[var(--rf-green)]'}`}>
               <div className="h-12 bg-gray-200 mb-2 rounded"></div>
               <span className="text-xs font-medium">Classic</span>
@@ -267,8 +345,8 @@ export default function SeekerCV() {
           <input ref={fileInputRef} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={createFile} />
           
           {/* Example Uploaded File */}
-          <div className="mt-4 flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100">
-            <div className="flex items-center overflow-hidden">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded border border-gray-100">
+            <div className="flex items-center overflow-hidden min-w-0">
               <FileText className="w-8 h-8 text-red-500 mr-3 flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--rf-navy)] truncate">{currentFile?.file_name || 'No CV uploaded yet'}</p>
@@ -277,7 +355,7 @@ export default function SeekerCV() {
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2 ml-2">
+            <div className="flex space-x-2 sm:ml-2 self-end sm:self-auto">
               <button disabled={!currentFile} onClick={() => currentFile && openEditFile(currentFile)} className="p-1 hover:bg-gray-200 rounded text-gray-500 disabled:opacity-50"><Edit2 className="w-4 h-4" /></button>
               <button disabled={!currentFile} onClick={() => currentFile && setDeleteFileId(currentFile.id)} className="p-1 hover:bg-red-100 rounded text-red-500 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
             </div>
@@ -298,9 +376,9 @@ export default function SeekerCV() {
           <p className="text-sm text-[var(--rf-muted)] mb-4">
             Allow employers to find your profile in Talent Search.
           </p>
-          <div className="flex items-center justify-between text-xs text-[var(--rf-muted)] pt-4 border-t border-gray-100">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-[var(--rf-muted)] pt-4 border-t border-gray-100">
             <span>Last updated: {settings.last_synced_at ? new Date(settings.last_synced_at).toLocaleString() : 'Not synced yet'}</span>
-            <button disabled={saving} onClick={syncFromProfile} className="flex items-center text-[var(--rf-green)] hover:underline font-semibold disabled:opacity-60">
+            <button disabled={saving} onClick={syncFromProfile} className="flex items-center text-[var(--rf-green)] hover:underline font-semibold disabled:opacity-60 self-start sm:self-auto">
               <RefreshCcw className="w-3 h-3 mr-1" />
               Update from Profile
             </button>

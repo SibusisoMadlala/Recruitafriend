@@ -8,4 +8,37 @@
   Run `npm i` to install the dependencies.
 
   Run `npm run dev` to start the development server.
+
+  ## Product email SMTP prerequisites
+
+  Product workflow email dispatch (alerts, referrals, employer communications) is handled in `supabase/functions/server/index.tsx` and requires SMTP settings in the edge-function environment.
+
+  Required settings:
+
+  - `SMTP_HOST`
+  - `SMTP_PORT`
+  - `SMTP_USERNAME`
+  - `SMTP_PASSWORD`
+  - `SMTP_FROM_EMAIL`
+
+  Optional settings:
+
+  - `SMTP_SECURE` (default: `true`)
+  - `SMTP_MAX_ATTEMPTS` (default: `3`, bounded to 1-5)
+  - `SMTP_FROM_NAME` (global fallback sender name)
+  - `SMTP_FROM_NAME_ALERTS`
+  - `SMTP_FROM_NAME_REFERRALS`
+  - `SMTP_FROM_NAME_EMPLOYER`
+
+  Sender identity policy:
+
+  - Alerts use `SMTP_FROM_NAME_ALERTS` (fallback: `RecruitFriend Alerts`)
+  - Referrals use `SMTP_FROM_NAME_REFERRALS` (fallback: `RecruitFriend Referrals`)
+  - Employer communications use `SMTP_FROM_NAME_EMPLOYER` (fallback: `RecruitFriend Hiring`)
+
+  Deliverability requirements for production:
+
+  - Configure SPF for your sending domain
+  - Configure DKIM for your sending domain
+  - Configure a DMARC policy for your sending domain
   

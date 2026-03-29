@@ -4,9 +4,10 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  user_type: 'seeker' | 'employer';
+  user_type: 'seeker' | 'employer' | 'admin';
   /** Legacy camelCase alias used by existing components */
-  userType?: 'seeker' | 'employer';
+  userType?: 'seeker' | 'employer' | 'admin';
+  employer_status?: 'pending_review' | 'needs_info' | 'approved' | 'rejected' | 'suspended' | null;
   subscription: string;
   headline?: string;
   summary?: string;
@@ -115,6 +116,10 @@ export interface JobAlert {
   frequency: 'daily' | 'weekly' | 'immediately';
   types: string[];
   active: boolean;
+  next_dispatch_at?: string | null;
+  last_dispatched_at?: string | null;
+  last_dispatch_status?: string | null;
+  last_dispatch_error?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -141,6 +146,10 @@ export interface Referral {
   referrer_id: string;
   referee_email?: string;
   status: 'invited' | 'signed_up' | 'hired';
+  invite_email_status?: 'not_sent' | 'pending' | 'sent' | 'failed' | null;
+  invite_email_sent_at?: string | null;
+  invite_email_last_error?: string | null;
+  invite_email_attempt_count?: number;
   payout: number;
   created_at: string;
   updated_at?: string;

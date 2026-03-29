@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { Outlet } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { EmployerSidebar } from '../components/EmployerSidebar';
 import { Navbar } from '../components/Navbar';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu, X } from 'lucide-react';
 
 export default function EmployerLayout() {
   const { loading } = useAuth();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   if (loading) {
     return (
@@ -17,9 +19,24 @@ export default function EmployerLayout() {
 
   return (
     <div className="flex min-h-screen overflow-x-hidden bg-gray-50">
-      <EmployerSidebar />
-      <div className="flex min-w-0 flex-1 flex-col pt-16 transition-all duration-300 md:ml-64 md:pt-0 min-h-screen">
-          <Navbar />
+      <EmployerSidebar isOpen={isSidebarOpen} onOpenChange={setIsSidebarOpen} showMobileToggle={false} />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-300 md:ml-64">
+          <Navbar
+            hideMobileMenuToggle
+            fullWidth
+            className="z-30"
+            mobileLeading={(
+              <button
+                type="button"
+                aria-label={isSidebarOpen ? 'Close employer navigation' : 'Open employer navigation'}
+                aria-expanded={isSidebarOpen}
+                className="inline-flex items-center justify-center rounded-[var(--rf-radius-md)] border border-gray-200 p-2 text-[var(--rf-navy)] transition-colors hover:bg-gray-50 md:hidden"
+                onClick={() => setIsSidebarOpen((open) => !open)}
+              >
+                {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            )}
+          />
           <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
             <Outlet />
           </main>
