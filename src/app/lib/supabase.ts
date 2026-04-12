@@ -17,6 +17,45 @@ if (!globalSupabase.__recruitfriendSupabase__) {
   globalSupabase.__recruitfriendSupabase__ = supabase;
 }
 
+function normalizeAppOrigin(candidate: string) {
+  const trimmed = String(candidate || '').trim();
+  if (!trimmed) return '';
+
+  try {
+    const url = new URL(trimmed);
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+export function getAppOrigin() {
+  const configuredOrigin = normalizeAppOrigin(import.meta.env.VITE_PUBLIC_APP_URL || '');
+  if (configuredOrigin) {
+    return configuredOrigin;
+  }
+
+  if (typeof window !== 'undefined') {
+    return normalizeAppOrigin(window.location.origin);
+  }
+
+  return '';
+}
+
+export function buildAppUrl(path = '/') {
+  const baseOrigin = getAppOrigin();
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (!baseOrigin) {
+    return normalizedPath;
+  }
+
+  return new URL(normalizedPath, `${baseOrigin}/`).toString();
+}
+
 export const serverUrl = `${supabaseUrl}/functions/v1/make-server-bca21fd3`;
 
 type ApiCallOptions = RequestInit & {

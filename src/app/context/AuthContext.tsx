@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, apiCall } from '../lib/supabase';
+import { supabase, apiCall, buildAppUrl } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { AuthContext, UserProfile } from './auth-context';
 
@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signUp(email: string, password: string, name: string, userType: 'seeker' | 'employer') {
-    const emailRedirectTo = `${window.location.origin}/login?verified=1`;
+    const emailRedirectTo = buildAppUrl('/login?verified=1');
 
     await apiCall('/auth/signup', {
       method: 'POST',
@@ -209,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signInWithGoogle(returnPath = '/login') {
     const safeReturnPath = returnPath.startsWith('/') ? returnPath : '/login';
-    const redirectTo = new URL(safeReturnPath, window.location.origin).toString();
+    const redirectTo = buildAppUrl(safeReturnPath);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

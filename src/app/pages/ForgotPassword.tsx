@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { apiCall } from '../lib/supabase';
+import { apiCall, buildAppUrl } from '../lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Mail, ArrowLeft } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export default function ForgotPassword() {
         method: 'POST',
         body: JSON.stringify({
           email: email.trim(),
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: buildAppUrl('/reset-password'),
         }),
       });
       // Always show success to avoid user enumeration
