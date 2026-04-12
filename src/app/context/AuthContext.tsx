@@ -107,9 +107,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // race condition where a stale empty-session response can arrive after
     // signIn and overwrite the signed-in user with null.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.access_token).finally(() => setLoading(false));
+      const sessionUser = session?.user ?? null;
+
+      // Block unverified email users from being treated as signed-in.
+      // email_confirmed_at is null when Supabase email confirmation is pending.
+      // Google OAuth users always have email_confirmed_at set by the provider.
+      if (sessionUser && !sessionUser.email_confirmed_at) {
+        supabase.auth.signOut(); // triggers SIGNED_OUT which clears state
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      setUser(sessionUser);
+      if (sessionUser) {
+        fetchProfile(session!.access_token).finally(() => setLoading(false));
       } else {
         setProfile(null);
         setLoading(false);
@@ -128,6 +141,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     if (!data.user) {
       throw new Error('Sign in failed: missing user session');
+    }
+
+    const isEmailVerified = Boolean(data.user.email_confirmed_at);
+    if (!isEmailVerified) {
+      await supabase.auth.signOut();
+      throw new Error('Please verify your email before signing in. Check your inbox for the verification link.');
     }
 
     // onAuthStateChange fires SIGNED_IN and handles setUser + fetchProfile.
@@ -180,14 +199,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signUp(email: string, password: string, name: string, userType: 'seeker' | 'employer') {
-    // Create user via backend
+    const emailRedirectTo = `${window.location.origin}/login?verified=1`;
+
     await apiCall('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name, userType }),
+      body: JSON.stringify({ email, password, name, userType, emailRedirectTo }),
     });
-    
-    // Sign in the new user
-    await signIn(email, password);
+  }
+
+  async function signInWithGoogle(returnPath = '/login') {
+    const safeReturnPath = returnPath.startsWith('/') ? returnPath : '/login';
+    const redirectTo = new URL(safeReturnPath, window.location.origin).toString();
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) throw error;
+  }
+
+  async function signUpWithGoogle(returnPath = '/signup') {
+    await signInWithGoogle(returnPath);
   }
 
   async function signOut() {
@@ -207,6 +245,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading, 
       signIn, 
       signUp, 
+      signInWithGoogle,
+      signUpWithGoogle,
       signOut,
       refreshProfile 
     }}>

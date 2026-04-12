@@ -1,0 +1,32 @@
+[auth]
+# Email provider configuration for Auth
+enable_signup = true
+enable_email_autoconfirm = false
+enable_anonymous_sign_ins = false
+
+# Configure custom SMTP for Auth emails
+smtp_admin_email = "admin@recruitfriend.co.za"
+smtp_sender_name = "Recruitfriend Admin"
+smtp_host = "smtp.gmail.com"
+smtp_port = 465
+smtp_sender_email = "admin@recruitfriend.co.za"
+smtp_user = "admin@recruitfriend.co.za"
+smtp_pass = "towf kzbg pmrw xkyd"
+
+# Email templates configuration
+[auth.email]
+enable_confirmations = true
+enable_recovery = true
+enable_invite = true
+
+# Auto confirm emails (set to false for production)
+double_confirm_changes = true
+
+[auth.sms]
+enable_confirmations = false
+
+[functions.make-server-bca21fd3]
+# This function serves both public and protected routes.
+# Route-level auth is enforced inside the function itself, so disabling
+# gateway JWT verification avoids browser preflight/sign-up failures.
+verify_jwt = false

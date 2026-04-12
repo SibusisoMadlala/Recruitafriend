@@ -4,16 +4,42 @@ import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 import { Loader2, Users, Building2 } from 'lucide-react';
 
+function resolveUserType(profile: Record<string, any> | null | undefined, fallback: unknown) {
+  return String(profile?.userType || profile?.user_type || fallback || 'seeker').toLowerCase();
+}
+
+function resolveDestination(profile: Record<string, any> | null | undefined, fallback: unknown) {
+  const resolved = resolveUserType(profile, fallback);
+  const employerStatus = String(profile?.employer_status || '').toLowerCase();
+
+  if (resolved === 'admin') return '/admin/dashboard';
+  if (resolved === 'employer' && employerStatus !== 'approved') return '/employer/onboarding-status';
+  if (resolved === 'employer') return '/employer/dashboard';
+  return '/seeker/dashboard';
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+      <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.3h6.45a5.51 5.51 0 0 1-2.39 3.62v3.01h3.86c2.26-2.08 3.57-5.15 3.57-8.66Z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.91l-3.86-3.01c-1.07.72-2.44 1.15-4.09 1.15-3.14 0-5.8-2.12-6.75-4.97H1.26v3.1A12 12 0 0 0 12 24Z" />
+      <path fill="#FBBC05" d="M5.25 14.26A7.2 7.2 0 0 1 4.87 12c0-.78.13-1.54.38-2.26v-3.1H1.26A12 12 0 0 0 0 12c0 1.93.46 3.75 1.26 5.36l3.99-3.1Z" />
+      <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.58 1.81l3.43-3.43C17.95 1.19 15.23 0 12 0A12 12 0 0 0 1.26 6.64l3.99 3.1c.95-2.85 3.61-4.97 6.75-4.97Z" />
+    </svg>
+  );
+}
+
 export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signUp } = useAuth();
+  const { signUp, signUpWithGoogle, user, profile, loading: authLoading } = useAuth();
   
   const [userType, setUserType] = useState<'seeker' | 'employer'>('seeker');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const type = searchParams.get('type');
@@ -22,18 +48,37 @@ export default function Signup() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (authLoading || !user) return;
+    navigate(resolveDestination(profile, user.user_metadata?.userType), { replace: true });
+  }, [authLoading, user, profile, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
       await signUp(email, password, name, userType);
-      toast.success('Account created successfully!');
-      navigate(userType === 'seeker' ? '/seeker/dashboard' : '/employer/onboarding-status');
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (error: any) {
       toast.error(error.message || 'Failed to create account');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    if (userType === 'employer') {
+      toast.info('Employer onboarding with Google is coming soon. Please use email signup for employer accounts.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      await signUpWithGoogle('/signup');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to sign up with Google');
+      setGoogleLoading(false);
     }
   };
 
@@ -139,7 +184,7 @@ export default function Signup() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || googleLoading || authLoading}
               className="w-full py-3 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               {loading ? (
@@ -151,6 +196,40 @@ export default function Signup() {
                 'Create Account'
               )}
             </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-[var(--rf-border)]" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-[var(--rf-muted)]">or</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGoogleSignup}
+              disabled={loading || googleLoading || authLoading}
+              className="w-full py-3 border border-[var(--rf-border)] text-[var(--rf-text)] rounded-[var(--rf-radius-md)] hover:bg-gray-50 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {googleLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Redirecting to Google...
+                </>
+              ) : (
+                <>
+                  <GoogleIcon />
+                  Continue with Google
+                </>
+              )}
+            </button>
+
+            {userType === 'employer' && (
+              <p className="text-xs text-[var(--rf-muted)] text-center">
+                Google sign-up currently creates job seeker accounts only.
+              </p>
+            )}
           </form>
 
           <div className="mt-6 text-center">

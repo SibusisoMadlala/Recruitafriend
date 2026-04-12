@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Outlet } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Outlet, useLocation } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { EmployerSidebar } from '../components/EmployerSidebar';
 import { Navbar } from '../components/Navbar';
@@ -7,7 +7,12 @@ import { Loader2, Menu, X } from 'lucide-react';
 
 export default function EmployerLayout() {
   const { loading } = useAuth();
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
   
   if (loading) {
     return (

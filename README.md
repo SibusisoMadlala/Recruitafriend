@@ -26,15 +26,22 @@
   - `SMTP_SECURE` (default: `true`)
   - `SMTP_MAX_ATTEMPTS` (default: `3`, bounded to 1-5)
   - `SMTP_FROM_NAME` (global fallback sender name)
+  - `SMTP_FROM_NAME_AUTH`
   - `SMTP_FROM_NAME_ALERTS`
   - `SMTP_FROM_NAME_REFERRALS`
   - `SMTP_FROM_NAME_EMPLOYER`
 
   Sender identity policy:
 
+  - Auth emails use `SMTP_FROM_NAME_AUTH` (fallback: `Recruitfriend Admin`)
   - Alerts use `SMTP_FROM_NAME_ALERTS` (fallback: `RecruitFriend Alerts`)
   - Referrals use `SMTP_FROM_NAME_REFERRALS` (fallback: `RecruitFriend Referrals`)
   - Employer communications use `SMTP_FROM_NAME_EMPLOYER` (fallback: `RecruitFriend Hiring`)
+
+  Configuration notes:
+
+  - For deployed edge functions, set `SMTP_*` values in Supabase-managed secrets rather than the frontend `.env` file.
+  - When using Gmail SMTP, set `SMTP_USERNAME` to the full mailbox address (for example `admin@recruitfriend.co.za`) and use an app password.
 
   Deliverability requirements for production:
 

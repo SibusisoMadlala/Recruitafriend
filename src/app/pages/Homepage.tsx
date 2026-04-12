@@ -162,7 +162,7 @@ export default function Homepage() {
       </section>
 
       {/* Stats Bar */}
-      <section className="bg-white py-8 border-b border-[var(--rf-border)]">
+      {/* <section className="bg-white py-8 border-b border-[var(--rf-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-4 text-center sm:grid-cols-2 md:grid-cols-4 md:gap-6">
             <div>
@@ -183,7 +183,7 @@ export default function Homepage() {
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* Browse by Category */}
       <section className="py-16 bg-[var(--rf-bg)]">
@@ -318,56 +318,7 @@ export default function Homepage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-16 bg-[var(--rf-bg)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="mb-8 text-center text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">
-            What Our Users Say
-          </h2>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {[
-              {
-                name: 'Thabo Mokoena',
-                role: 'Software Developer',
-                text: 'Found my dream job in just 2 weeks! The video introduction feature really helped me stand out.',
-                rating: 5,
-              },
-              {
-                name: 'Sarah van der Merwe',
-                role: 'HR Manager',
-                text: 'RecruitFriend made hiring so easy. The video assessments saved us hours of screening time.',
-                rating: 5,
-              },
-              {
-                name: 'Sipho Ndlovu',
-                role: 'Marketing Graduate',
-                text: 'The referral programme is amazing! Already earned R350 by helping friends find jobs.',
-                rating: 5,
-              },
-            ].map((testimonial, index) => (
-              <div
-                key={index}
-                className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6"
-              >
-                <div className="flex items-center mb-4">
-                  <div className="w-12 h-12 rounded-full bg-[var(--rf-green)] flex items-center justify-center text-white font-bold mr-3">
-                    {testimonial.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-[var(--rf-navy)]">{testimonial.name}</div>
-                    <div className="text-sm text-[var(--rf-muted)]">{testimonial.role}</div>
-                  </div>
-                </div>
-                <p className="text-[var(--rf-text)] mb-4">{testimonial.text}</p>
-                <div className="flex">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <span key={i} className="text-[var(--rf-gold)]">★</span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      
     </div>
   );
 }

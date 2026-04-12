@@ -6,6 +6,29 @@ import { SmtpClient } from 'https://deno.land/x/smtp@v0.7.0/mod.ts';
 
 const app = new Hono();
 
+type LegacyWriter = {
+  write: (chunk: Uint8Array) => Promise<number> | number;
+};
+
+type DenoCompat = typeof Deno & {
+  writeAll?: (writer: LegacyWriter, data: Uint8Array) => Promise<void>;
+};
+
+const denoCompat = Deno as DenoCompat;
+
+if (typeof denoCompat.writeAll !== 'function') {
+  denoCompat.writeAll = async (writer: LegacyWriter, data: Uint8Array) => {
+    let written = 0;
+    while (written < data.length) {
+      const bytesWritten = await writer.write(data.subarray(written));
+      if (!Number.isFinite(bytesWritten) || bytesWritten <= 0) {
+        throw new Error('Failed to write SMTP payload');
+      }
+      written += bytesWritten;
+    }
+  };
+}
+
 // Middleware
 app.use('*', cors());
 app.use('*', logger(console.log));
@@ -18,18 +41,32 @@ function getDb() {
   return createClient(supabaseUrl, supabaseServiceKey);
 }
 
+function getPublicAuthClient() {
+  const anonKey = getEnv('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('SUPABASE_URL or SUPABASE_ANON_KEY is missing for built-in auth email flows');
+  }
+
+  return createClient(supabaseUrl, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
 const EXPERIENCE_LEVELS = ['entry', 'junior', 'mid', 'senior'] as const;
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
-const SMTP_REQUIRED_ENV = [
-  'SMTP_HOST',
-  'SMTP_PORT',
-  'SMTP_USERNAME',
-  'SMTP_PASSWORD',
-  'SMTP_FROM_EMAIL',
-] as const;
+const DEFAULT_SMTP = {
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  fromEmail: 'admin@recruitfriend.co.za',
+  maxAttempts: 3,
+} as const;
 
-type ProductEmailCategory = 'alerts' | 'referrals' | 'employer_communications';
+type ProductEmailCategory = 'alerts' | 'referrals' | 'employer_communications' | 'auth';
 
 const EMAIL_STATUS_VALUES = ['pending', 'sent', 'failed', 'suppressed'] as const;
 const INTERVIEW_NOTES_PREFIX = 'RF_INTERVIEW:';
@@ -59,11 +96,29 @@ type ProductEmailRequest = {
   preferenceAllowed?: () => Promise<boolean>;
 };
 
+type AuthGeneratedLinkProperties = {
+  action_link?: string | null;
+  email_otp?: string | null;
+  hashed_token?: string | null;
+  redirect_to?: string | null;
+  verification_type?: string | null;
+};
+
+type AuthRelayPayload = {
+  token: string;
+  type: string;
+  redirectTo?: string;
+};
+
+type AuthVerificationType = 'email' | 'recovery' | 'invite' | 'email_change';
+
 type SmtpConfig = {
   host: string;
   port: number;
-  username: string;
-  password: string;
+  auth: {
+    user: string;
+    pass: string;
+  };
   fromEmail: string;
   fromName: string;
   secure: boolean;
@@ -83,7 +138,38 @@ const SENDER_POLICY: Record<ProductEmailCategory, { fromNameEnv: string; fallbac
     fromNameEnv: 'SMTP_FROM_NAME_EMPLOYER',
     fallbackFromName: 'RecruitFriend Hiring',
   },
+  auth: {
+    fromNameEnv: 'SMTP_FROM_NAME_AUTH',
+    fallbackFromName: 'Recruitfriend Admin',
+  },
 };
+
+function getEnv(name: string) {
+  return String(Deno.env.get(name) || '').trim();
+}
+
+function getOptionalNumberEnv(name: string, fallback: number) {
+  const raw = getEnv(name);
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getOptionalBooleanEnv(name: string, fallback: boolean) {
+  const raw = getEnv(name).toLowerCase();
+  if (!raw) return fallback;
+  if (['true', '1', 'yes', 'on'].includes(raw)) return true;
+  if (['false', '0', 'no', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
+function normalizeSmtpError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || 'Unknown SMTP failure');
+  if (/535|username and password not accepted|authentication failed/i.test(message)) {
+    return 'SMTP authentication failed. Verify Supabase Edge Function secrets SMTP_USERNAME and SMTP_PASSWORD. For Gmail, use the full mailbox address and an app password.';
+  }
+  return message;
+}
 
 function asDbError(error: unknown) {
   if (!error || typeof error !== 'object') return null;
@@ -98,38 +184,146 @@ function isMissingColumnError(error: unknown) {
 
 function getSenderIdentity(category: ProductEmailCategory) {
   const policy = SENDER_POLICY[category];
-  const fromEmail = String(Deno.env.get('SMTP_FROM_EMAIL') || '').trim();
-  const fromName = String(Deno.env.get(policy.fromNameEnv) || Deno.env.get('SMTP_FROM_NAME') || policy.fallbackFromName).trim();
+  const fromEmail = getEnv('SMTP_FROM_EMAIL') || getEnv('SMTP_USERNAME') || DEFAULT_SMTP.fromEmail;
+  const fromName = getEnv(policy.fromNameEnv) || getEnv('SMTP_FROM_NAME') || policy.fallbackFromName;
   return { fromEmail, fromName };
 }
 
+function base64UrlEncode(value: string) {
+  return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlDecode(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  return atob(padded);
+}
+
+function getAuthRelayBaseUrl() {
+  const explicit = getEnv('SMTP_AUTH_RELAY_BASE_URL');
+  if (explicit) {
+    try {
+      return new URL(explicit).toString().replace(/\/$/, '');
+    } catch {
+      // ignore invalid explicit base URL and fallback
+    }
+  }
+  return '';
+}
+
+function normalizeAuthVerificationType(rawType: string) {
+  const normalized = String(rawType || '').trim().toLowerCase();
+  if (!normalized) return '';
+
+  if (normalized === 'signup' || normalized === 'magiclink') {
+    return 'email';
+  }
+
+  return normalized;
+}
+
+function getDefaultAuthRedirectUrl() {
+  return 'http://localhost:5173/';
+}
+
+function buildAuthActionLink(
+  properties: AuthGeneratedLinkProperties,
+  fallbackType?: AuthVerificationType
+) {
+  const rawActionLink = String(properties.action_link || '').trim();
+  const fallbackUrl = new URL('/auth/v1/verify', supabaseUrl || 'https://recruitfriend.co.za');
+
+  let url = fallbackUrl;
+  if (rawActionLink) {
+    try {
+      url = new URL(rawActionLink);
+    } catch {
+      url = fallbackUrl;
+    }
+  }
+
+  if (!/\/auth\/v1\/verify$/i.test(url.pathname)) {
+    url = fallbackUrl;
+  }
+
+  const existingParams = new URLSearchParams(url.search);
+  const verificationTypeFromPayload = normalizeAuthVerificationType(
+    String(existingParams.get('type') || properties.verification_type || '').trim()
+  );
+  const fallbackVerificationType = normalizeAuthVerificationType(String(fallbackType || '').trim());
+  const verificationType = verificationTypeFromPayload || fallbackVerificationType;
+  const hashedToken = String(properties.hashed_token || existingParams.get('token') || '').trim();
+  const redirectTo = String(properties.redirect_to || existingParams.get('redirect_to') || '').trim();
+
+  if (!verificationType) {
+    throw new Error('Missing verification type in generated auth link');
+  }
+
+  if (!hashedToken) {
+    throw new Error('Missing token in generated auth link');
+  }
+
+  const normalizedParams = new URLSearchParams();
+  normalizedParams.set('token', hashedToken);
+  normalizedParams.set('type', verificationType);
+  if (redirectTo) {
+    normalizedParams.set('redirect_to', redirectTo);
+  }
+
+  url.search = normalizedParams.toString();
+  return url.toString();
+}
+
+function buildAuthRelayLink(
+  properties: AuthGeneratedLinkProperties,
+  fallbackType?: AuthVerificationType
+) {
+  const canonicalVerifyUrl = buildAuthActionLink(properties, fallbackType);
+  const relayBaseUrl = getAuthRelayBaseUrl();
+  if (!relayBaseUrl) {
+    return canonicalVerifyUrl;
+  }
+
+  const verifyUrl = new URL(canonicalVerifyUrl);
+  const payload: AuthRelayPayload = {
+    token: String(verifyUrl.searchParams.get('token') || '').trim(),
+    type: String(verifyUrl.searchParams.get('type') || '').trim(),
+  };
+
+  const redirectTo = String(verifyUrl.searchParams.get('redirect_to') || '').trim();
+  if (redirectTo) {
+    payload.redirectTo = redirectTo;
+  }
+
+  if (!payload.token || !payload.type) {
+    throw new Error('Cannot build auth relay link because token or verification type is missing');
+  }
+
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  return `${relayBaseUrl}/auth/verify/${encodedPayload}`;
+}
+
 function getSmtpConfig(category: ProductEmailCategory): SmtpConfig {
-  const missing = SMTP_REQUIRED_ENV.filter((key) => !String(Deno.env.get(key) || '').trim());
-  if (missing.length > 0) {
-    throw new Error(`SMTP configuration is incomplete. Missing: ${missing.join(', ')}`);
+  const host = getEnv('SMTP_HOST') || DEFAULT_SMTP.host;
+  const port = getOptionalNumberEnv('SMTP_PORT', DEFAULT_SMTP.port);
+  const username = getEnv('SMTP_USERNAME');
+  const password = getEnv('SMTP_PASSWORD');
+  const secure = getOptionalBooleanEnv('SMTP_SECURE', DEFAULT_SMTP.secure);
+  const maxAttempts = Math.max(1, getOptionalNumberEnv('SMTP_MAX_ATTEMPTS', DEFAULT_SMTP.maxAttempts));
+
+  if (!username || !password) {
+    throw new Error('SMTP credentials are missing. Configure Supabase Edge Function secrets SMTP_USERNAME and SMTP_PASSWORD.');
   }
 
-  const host = String(Deno.env.get('SMTP_HOST') || '').trim();
-  const port = Number.parseInt(String(Deno.env.get('SMTP_PORT') || '').trim(), 10);
-  const username = String(Deno.env.get('SMTP_USERNAME') || '').trim();
-  const password = String(Deno.env.get('SMTP_PASSWORD') || '').trim();
-  const secure = ['true', '1', 'yes'].includes(String(Deno.env.get('SMTP_SECURE') || 'true').toLowerCase());
-  const maxAttempts = Math.max(1, Math.min(5, Number.parseInt(String(Deno.env.get('SMTP_MAX_ATTEMPTS') || '3'), 10) || 3));
   const sender = getSenderIdentity(category);
-
-  if (!Number.isFinite(port) || port <= 0 || port > 65535) {
-    throw new Error('SMTP_PORT must be a valid port number between 1 and 65535');
-  }
-
-  if (!/^\S+@\S+\.\S+$/.test(sender.fromEmail)) {
-    throw new Error('SMTP_FROM_EMAIL must be a valid email address');
-  }
 
   return {
     host,
     port,
-    username,
-    password,
+    auth: {
+      user: username,
+      pass: password,
+    },
     fromEmail: sender.fromEmail,
     fromName: sender.fromName,
     secure,
@@ -154,6 +348,80 @@ function renderTemplate(template: string, templateVars: Record<string, string>) 
     throw new Error(`Missing required template variables: ${missing.join(', ')}`);
   }
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_full, key) => String(templateVars[key] || ''));
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getEmailCtaLabel(subject: string) {
+  const normalizedSubject = String(subject || '').trim().toLowerCase();
+  if (normalizedSubject.includes('confirm')) return 'Confirm email address';
+  if (normalizedSubject.includes('reset')) return 'Reset password';
+  if (normalizedSubject.includes('invite')) return 'View invitation';
+  if (normalizedSubject.includes('onboarding')) return 'View update';
+  return 'Open secure link';
+}
+
+function renderEmailParagraphHtml(paragraph: string, subject: string) {
+  const normalized = paragraph.trim();
+  if (!normalized) return '';
+
+  const urlOnlyMatch = normalized.match(/^https?:\/\/\S+$/i);
+  if (urlOnlyMatch) {
+    const href = urlOnlyMatch[0];
+    const safeHref = escapeHtml(href);
+    const ctaLabel = escapeHtml(getEmailCtaLabel(subject));
+    return [
+      '<div style="margin: 28px 0; text-align: center;">',
+      `  <a href="${safeHref}" style="display: inline-block; background: #0f766e; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 22px; border-radius: 999px;">${ctaLabel}</a>`,
+      '</div>',
+      `<p style="margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: #475569; word-break: break-word;">If the button does not work, copy and paste this link into your browser:<br /><a href="${safeHref}" style="color: #0f766e; text-decoration: underline;">${safeHref}</a></p>`,
+    ].join('');
+  }
+
+  const linked = escapeHtml(normalized)
+    .replace(
+      /(https?:\/\/[^\s<]+)/gi,
+      (match) => `<a href="${escapeHtml(match)}" style="color: #0f766e; text-decoration: underline; word-break: break-word;">${escapeHtml(match)}</a>`
+    )
+    .replace(/\n/g, '<br />');
+
+  return `<p style="margin: 0 0 18px; font-size: 15px; line-height: 1.7; color: #0f172a;">${linked}</p>`;
+}
+
+function renderEmailHtml(subject: string, body: string) {
+  const normalizedBody = String(body || '').replace(/\r\n/g, '\n').trim();
+  const safeSubject = escapeHtml(String(subject || 'RecruitFriend update').trim() || 'RecruitFriend update');
+  const paragraphs = normalizedBody
+    .split(/\n\s*\n/g)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  const contentHtml = paragraphs.map((paragraph) => renderEmailParagraphHtml(paragraph, subject)).join('');
+
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '  <body style="margin: 0; padding: 24px 12px; background: #f8fafc; font-family: Inter, Segoe UI, Arial, sans-serif; color: #0f172a;">',
+    '    <div style="max-width: 640px; margin: 0 auto;">',
+    '      <div style="padding: 20px 24px 12px; text-align: center;">',
+    '        <div style="display: inline-block; padding: 8px 14px; border-radius: 999px; background: #ecfeff; color: #0f766e; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">RecruitFriend</div>',
+    '      </div>',
+    '      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 24px; padding: 32px 28px; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);">',
+    `        <h1 style="margin: 0 0 24px; font-size: 24px; line-height: 1.3; color: #020617;">${safeSubject}</h1>`,
+    `        ${contentHtml}`,
+    '      </div>',
+    '      <p style="margin: 18px 0 0; text-align: center; font-size: 12px; line-height: 1.6; color: #64748b;">This email was sent by RecruitFriend, your career wingman for South African talent.</p>',
+    '    </div>',
+    '  </body>',
+    '</html>',
+  ].join('\n');
 }
 
 async function writeEmailLog(
@@ -202,7 +470,8 @@ async function sendSmtpEmail(
   config: SmtpConfig,
   to: string,
   subject: string,
-  body: string
+  body: string,
+  html: string
 ) {
   let lastError: unknown = null;
 
@@ -213,15 +482,15 @@ async function sendSmtpEmail(
         await client.connectTLS({
           hostname: config.host,
           port: config.port,
-          username: config.username,
-          password: config.password,
+          username: config.auth.user,
+          password: config.auth.pass,
         });
       } else {
         await client.connect({
           hostname: config.host,
           port: config.port,
-          username: config.username,
-          password: config.password,
+          username: config.auth.user,
+          password: config.auth.pass,
         });
       }
 
@@ -230,6 +499,7 @@ async function sendSmtpEmail(
         to,
         subject,
         content: body,
+        html,
       });
 
       await client.close();
@@ -251,7 +521,7 @@ async function sendSmtpEmail(
 
   return {
     ok: false as const,
-    error: lastError instanceof Error ? lastError.message : String(lastError || 'Unknown SMTP failure'),
+    error: normalizeSmtpError(lastError),
   };
 }
 
@@ -376,6 +646,7 @@ async function dispatchProductEmail(db: ReturnType<typeof getDb>, request: Produ
   }
 
   const body = renderTemplate(request.template, request.templateVars);
+  const html = renderEmailHtml(request.subject, body);
   const smtpConfig = getSmtpConfig(request.category);
 
   await writeEmailLog(db, {
@@ -389,7 +660,7 @@ async function dispatchProductEmail(db: ReturnType<typeof getDb>, request: Produ
     status: 'pending',
   });
 
-  const result = await sendSmtpEmail(smtpConfig, email, request.subject, body);
+  const result = await sendSmtpEmail(smtpConfig, email, request.subject, body, html);
   if (!result.ok) {
     await writeEmailLog(db, {
       eventType: request.eventType,
@@ -420,6 +691,78 @@ async function dispatchProductEmail(db: ReturnType<typeof getDb>, request: Produ
   });
 
   return { status: 'sent' as const, attempts: result.attempt };
+}
+
+async function sendSignupConfirmationEmail(
+  db: ReturnType<typeof getDb>,
+  payload: {
+    userId: string;
+    email: string;
+    name: string;
+    userType: 'seeker' | 'employer';
+    confirmationLink: string;
+  }
+) {
+  const displayName = String(payload.name || payload.email.split('@')[0] || 'there').trim();
+  const roleLabel = payload.userType === 'employer' ? 'employer' : 'job seeker';
+
+  return dispatchProductEmail(db, {
+    eventType: 'auth_signup_confirmation',
+    eventKey: `auth-signup-confirmation:${payload.userId}`,
+    recipientEmail: payload.email,
+    subject: 'Confirm your RecruitFriend account',
+    templateKey: 'auth-signup-confirmation',
+    category: 'auth',
+    templateVars: {
+      name: displayName,
+      role_label: roleLabel,
+      confirmation_link: payload.confirmationLink,
+    },
+    template: [
+      'Hi {{name}},',
+      '',
+      'Welcome to RecruitFriend! Your {{role_label}} account is almost ready.',
+      '',
+      'Please confirm your email address by opening the link below:',
+      '{{confirmation_link}}',
+      '',
+      'If you did not create this account, you can safely ignore this email.',
+      '',
+      '— The RecruitFriend team',
+    ].join('\n'),
+  });
+}
+
+async function sendPasswordRecoveryEmail(
+  db: ReturnType<typeof getDb>,
+  payload: {
+    email: string;
+    recoveryLink: string;
+  }
+) {
+  return dispatchProductEmail(db, {
+    eventType: 'auth_password_recovery',
+    eventKey: `auth-password-recovery:${payload.email}:${new Date().toISOString().slice(0, 10)}`,
+    recipientEmail: payload.email,
+    subject: 'Reset your RecruitFriend password',
+    templateKey: 'auth-password-recovery',
+    category: 'auth',
+    templateVars: {
+      recovery_link: payload.recoveryLink,
+    },
+    template: [
+      'Hi there,',
+      '',
+      'We received a request to reset your RecruitFriend password. Click the link below to set a new password:',
+      '{{recovery_link}}',
+      '',
+      'This link will expire in 24 hours.',
+      '',
+      'If you did not request a password reset, you can safely ignore this email.',
+      '',
+      '— The RecruitFriend team',
+    ].join('\n'),
+  });
 }
 
 function toCandidateVideoUrl(socialLinks: unknown) {
@@ -608,17 +951,39 @@ async function writeOnboardingAuditEvent(
 
 // ============== AUTH ROUTES ==============
 
-// Sign up â€” profile row created automatically by handle_new_user() DB trigger
+// Sign up — profile row created automatically by handle_new_user() DB trigger
 app.post('/make-server-bca21fd3/auth/signup', async (c) => {
   try {
-    const { email, password, name, userType } = await c.req.json();
+    const { email, password, name, userType, emailRedirectTo } = await c.req.json();
 
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedName = String(name || '').trim();
+    const normalizedUserType = String(userType || '').trim().toLowerCase() === 'employer' ? 'employer' : 'seeker';
+    const redirectTo = typeof emailRedirectTo === 'string' && emailRedirectTo.trim()
+      ? emailRedirectTo.trim()
+      : getDefaultAuthRedirectUrl();
+
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      return c.json({ error: 'A valid email address is required' }, 400);
+    }
+
+    if (typeof password !== 'string' || password.length < 6) {
+      return c.json({ error: 'Password must be at least 6 characters long' }, 400);
+    }
+
+    if (!normalizedName) {
+      return c.json({ error: 'Name is required' }, 400);
+    }
+
+    const authClient = getPublicAuthClient();
     const db = getDb();
-    const { data, error } = await db.auth.admin.createUser({
-      email,
+    const { data, error } = await authClient.auth.signUp({
+      email: normalizedEmail,
       password,
-      user_metadata: { name, userType },
-      email_confirm: true,
+      options: {
+        data: { name: normalizedName, userType: normalizedUserType },
+        emailRedirectTo: redirectTo,
+      }
     });
 
     if (error) {
@@ -626,17 +991,89 @@ app.post('/make-server-bca21fd3/auth/signup', async (c) => {
       return c.json({ error: error.message }, 400);
     }
 
-    if (userType === 'employer' && data.user?.id) {
+    if (normalizedUserType === 'employer' && data.user?.id) {
       await db
         .from('profiles')
         .update({ employer_status: 'pending_review', reviewed_at: null, reviewed_by: null, live_at: null, updated_at: new Date().toISOString() })
         .eq('id', data.user.id);
     }
 
-    return c.json({ user: data.user });
+    return c.json({
+      user: data.user,
+      requiresEmailVerification: true,
+    });
   } catch (error) {
     console.error('Signup error:', error);
     return c.json({ error: 'Signup failed' }, 500);
+  }
+});
+
+// Request password recovery email
+app.post('/make-server-bca21fd3/auth/recover-password', async (c) => {
+  try {
+    const { email, redirectTo } = await c.req.json();
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      return c.json({ error: 'A valid email address is required' }, 400);
+    }
+
+    const authClient = getPublicAuthClient();
+
+    const { error } = await authClient.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: (typeof redirectTo === 'string' && redirectTo.trim())
+        ? redirectTo.trim()
+        : getDefaultAuthRedirectUrl(),
+    });
+
+    if (error) {
+      console.error('Password recovery error:', error);
+      // Always return success for security (avoid email enumeration)
+      return c.json({ success: true, message: 'If an account exists for this email, a recovery link has been sent' }, 200);
+    }
+
+    // Always return success to avoid email enumeration attacks
+    return c.json({ success: true, message: 'If an account exists for this email, a recovery link has been sent' });
+  } catch (error) {
+    console.error('Password recovery error:', error);
+    return c.json({ success: true, message: 'If an account exists for this email, a recovery link has been sent' });
+  }
+});
+
+// Relay short auth links from email to canonical Supabase verify endpoint.
+app.get('/make-server-bca21fd3/auth/verify/:payload', async (c) => {
+  try {
+    const encodedPayload = String(c.req.param('payload') || '').trim();
+    if (!encodedPayload) {
+      return c.json({ error: 'Invalid verification payload' }, 400);
+    }
+
+    let parsed: AuthRelayPayload;
+    try {
+      parsed = JSON.parse(base64UrlDecode(encodedPayload)) as AuthRelayPayload;
+    } catch {
+      return c.json({ error: 'Invalid verification payload' }, 400);
+    }
+
+    const token = String(parsed.token || '').trim();
+    const type = String(parsed.type || '').trim();
+    const redirectTo = String(parsed.redirectTo || '').trim();
+
+    if (!token || !type) {
+      return c.json({ error: 'Invalid verification payload' }, 400);
+    }
+
+    const target = new URL('/auth/v1/verify', supabaseUrl || 'https://recruitfriend.co.za');
+    target.searchParams.set('token', token);
+    target.searchParams.set('type', type);
+    if (redirectTo) {
+      target.searchParams.set('redirect_to', redirectTo);
+    }
+
+    return c.redirect(target.toString(), 302);
+  } catch (error) {
+    console.error('Auth verify relay error:', error);
+    return c.json({ error: 'Failed to process verification link' }, 500);
   }
 });
 

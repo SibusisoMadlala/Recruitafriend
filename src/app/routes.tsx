@@ -33,6 +33,7 @@ import EmployerApplicants from './pages/EmployerApplicants';
 import EmployerInterviews from './pages/EmployerInterviews';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import VerifyEmail from './pages/VerifyEmail';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
 import EmployerInfo from './pages/EmployerInfo';
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: 'for-companies', Component: EmployerInfo },
       { path: 'login', Component: Login },
       { path: 'signup', Component: Signup },
+      { path: 'verify-email', Component: VerifyEmail },
       { path: 'forgot-password', Component: ForgotPassword },
       { path: 'reset-password', Component: ResetPassword },
     ],

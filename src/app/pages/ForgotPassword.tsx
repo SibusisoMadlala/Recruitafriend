@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { supabase } from '../lib/supabase';
+import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Mail, ArrowLeft } from 'lucide-react';
 
@@ -18,8 +18,12 @@ export default function ForgotPassword() {
 
     setLoading(true);
     try {
-      await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+      await apiCall('/auth/recover-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: email.trim(),
+          redirectTo: `${window.location.origin}/reset-password`,
+        }),
       });
       // Always show success to avoid user enumeration
       setSent(true);
@@ -27,6 +31,7 @@ export default function ForgotPassword() {
     } catch (error) {
       // Still show success message for security
       setSent(true);
+      console.error('Recovery error:', error);
     } finally {
       setLoading(false);
     }

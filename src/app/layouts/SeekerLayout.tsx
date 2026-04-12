@@ -32,6 +32,10 @@ export default function SeekerLayout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  useEffect(() => {
     document.body.style.overflow = isSidebarOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
