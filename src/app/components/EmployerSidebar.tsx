@@ -10,8 +10,6 @@ import {
   Search, 
   Building2, 
   BarChart2, 
-  CreditCard, 
-  Settings, 
   LogOut,
   Menu,
   X
@@ -72,8 +70,6 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
     { icon: Search, label: 'Talent Search', path: '/employer/talent-search' },
     { icon: Building2, label: 'Company Profile', path: '/employer/profile' },
     { icon: BarChart2, label: 'Analytics', path: '/employer/analytics' },
-    { icon: CreditCard, label: 'Subscription', path: '/employer/subscriptions' },
-    { icon: Settings, label: 'Settings', path: '/employer/settings' },
   ];
 
   // Helper for Plan Badge Color
@@ -104,18 +100,21 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed top-0 left-0 z-50 h-screen w-64 max-w-[86vw] bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
+        fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] w-64 max-w-[86vw] bg-[#0A2540] text-white transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:top-0 md:z-50 md:h-screen md:translate-x-0
         flex flex-col shadow-xl md:shadow-none
       `}>
         {/* Top Section */}
         <div className="p-6 border-b border-gray-700">
           <div className="flex items-center space-x-3 mb-1">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden">
-               {/* Placeholder for Logo */}
-               <span className="text-[#00C853] font-bold text-lg">
-                 {profile?.name ? profile.name.substring(0, 2).toUpperCase() : 'CO'}
-               </span>
+            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+               {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="Company logo" className="w-full h-full object-cover" />
+               ) : (
+                  <span className="text-[#00C853] font-bold text-lg">
+                    {profile?.name ? profile.name.substring(0, 2).toUpperCase() : 'CO'}
+                  </span>
+               )}
             </div>
             <div>
               <h2 className="font-bold text-white leading-tight truncate max-w-[140px]">
@@ -176,7 +175,7 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
       {/* Overlay for mobile */}
       {isOpen && (
         <div 
-          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-x-0 bottom-0 top-16 z-30 bg-black/50 md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}

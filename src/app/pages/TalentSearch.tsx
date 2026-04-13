@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, MapPin, Search, Video, Briefcase, Loader2, Mail } from 'lucide-react';
+import { MapPin, Search, Video, Briefcase, Loader2, Mail } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -7,7 +7,6 @@ import { Card, CardContent } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
-import { useAuth } from '../context/useAuth';
 
 type ExperienceLevel = 'entry' | 'junior' | 'mid' | 'senior';
 
@@ -32,10 +31,6 @@ const EXPERIENCE_LEVEL_OPTIONS: Array<{ label: string; value: ExperienceLevel }>
    { label: 'Senior (5+y)', value: 'senior' },
 ];
 
-function normalizeSubscription(value: unknown) {
-   return String(value || '').trim().toLowerCase();
-}
-
 function formatExperience(level: ExperienceLevel, years: number) {
    if (Number.isFinite(years) && years > 0) {
       const rounded = Math.round(years * 10) / 10;
@@ -53,12 +48,6 @@ function formatExperience(level: ExperienceLevel, years: number) {
 }
 
 export default function TalentSearch() {
-    const { profile } = useAuth();
-    const subscription = normalizeSubscription(profile?.subscription);
-    const [isLocked, setIsLocked] = useState(
-       subscription === 'starter' || subscription === 'free' || subscription === ''
-    );
-
     const [query, setQuery] = useState('');
     const [locationFilter, setLocationFilter] = useState('');
     const [selectedLevels, setSelectedLevels] = useState<ExperienceLevel[]>([]);
@@ -68,17 +57,9 @@ export default function TalentSearch() {
     const [candidates, setCandidates] = useState<Candidate[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(false);
-
-    useEffect(() => {
-       if (!profile) return;
-       const current = normalizeSubscription(profile.subscription);
-       const shouldLock = current === 'starter' || current === 'free' || current === '';
-       setIsLocked(shouldLock);
-    }, [profile]);
+   const [expandedVideoCandidateId, setExpandedVideoCandidateId] = useState<string | null>(null);
 
     const fetchCandidates = useCallback(async () => {
-       if (isLocked) return;
-
        setLoading(true);
        try {
           const params = new URLSearchParams();
@@ -102,7 +83,7 @@ export default function TalentSearch() {
        } finally {
           setLoading(false);
        }
-    }, [hasVideoOnly, isLocked, locationFilter, query, selectedLevels, sortBy]);
+    }, [hasVideoOnly, locationFilter, query, selectedLevels, sortBy]);
 
     useEffect(() => {
        void fetchCandidates();
@@ -133,40 +114,11 @@ export default function TalentSearch() {
 
    return (
      <div className="space-y-6 h-full flex flex-col relative overflow-hidden">
-        
-        {/* Upgrade Overlay if Locked */}
-        {isLocked && (
-           <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-8">
-              <div className="bg-white p-6 rounded-2xl shadow-xl max-w-md w-full border border-gray-100 ring-1 ring-black/5 animate-in fade-in zoom-in duration-500">
-                 <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-[#00C853]">
-                    <Search className="w-8 h-8" />
-                 </div>
-                 <h2 className="text-2xl font-bold text-[#0A2540] mb-2">Unlock Talent Search</h2>
-                 <p className="text-gray-500 mb-6 px-4">
-                    Upgrade to our <strong className="text-[#00C853]">Growth Plan</strong> to search our database of 48,000+ candidates and invite them to apply.
-                 </p>
-                 <ul className="text-left space-y-3 mb-8 bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
-                    <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-[#00C853]" /> Access full CV database</li>
-                    <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-[#00C853]" /> Filter by skills & experience</li>
-                    <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-[#00C853]" /> Watch video introductions</li>
-                 </ul>
-                 <div className="space-y-3">
-                    <Button className="w-full bg-[#00C853] hover:bg-[#00B548] text-white shadow-lg shadow-green-500/20 py-6 text-lg">
-                       Upgrade to Unlock
-                    </Button>
-                    <button onClick={() => setIsLocked(false)} className="text-sm text-gray-400 hover:text-gray-600 underline">
-                       Preview (Demo Mode)
-                    </button>
-                 </div>
-              </div>
-           </div>
-        )}
-
         {/* Header */}
         <div className="bg-[#0A2540] text-white p-8 rounded-xl relative overflow-hidden shadow-lg">
            <div className="relative z-10 max-w-3xl">
               <h1 className="text-3xl font-bold mb-2">Search Candidate Database</h1>
-              <p className="text-blue-200 mb-6">Find the perfect talent from 48,000+ verified job seekers.</p>
+              
               
               <div className="flex gap-2">
                  <div className="relative flex-1">
@@ -284,15 +236,33 @@ export default function TalentSearch() {
                                     {candidate.video_introduction ? (
                                        <Button
                                           variant="outline"
-                                          onClick={() => window.open(candidate.video_introduction as string, '_blank', 'noopener,noreferrer')}
+                                          className="flex items-center gap-2 hover:bg-blue-50"
+                                          onClick={(e) => {
+                                             e.preventDefault();
+                                             setExpandedVideoCandidateId((prev) =>
+                                               prev === candidate.id ? null : candidate.id
+                                             );
+                                          }}
                                        >
-                                          Watch Intro
+                                          <Video className="w-4 h-4" />
+                                          {expandedVideoCandidateId === candidate.id ? 'Hide Intro' : 'Watch Intro'}
                                        </Button>
                                     ) : null}
                                  </div>
 
                                  {candidate.summary ? (
                                     <p className="mt-4 text-sm text-gray-600 line-clamp-3">{candidate.summary}</p>
+                                 ) : null}
+
+                                 {candidate.video_introduction && expandedVideoCandidateId === candidate.id ? (
+                                    <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
+                                       <video
+                                          src={candidate.video_introduction}
+                                          controls
+                                          className="w-full max-h-80 object-contain"
+                                          preload="metadata"
+                                       />
+                                    </div>
                                  ) : null}
 
                                  <div className="mt-4 flex flex-wrap gap-2">

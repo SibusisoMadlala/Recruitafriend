@@ -105,12 +105,18 @@ export default function EmployerApplicants() {
 
   async function moveStage(appId: string, status: string) {
     try {
-      const { application } = await apiCall(`/applications/${appId}`, {
+      const { application, emailSent } = await apiCall(`/applications/${appId}`, {
         requireAuth: true,
         method: 'PUT', body: JSON.stringify({ status }),
       });
       setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: application.status } : a));
-      toast.success(`Moved to ${COLUMN_LABELS[status] || status}`);
+      
+      const statusLabel = COLUMN_LABELS[status] || status;
+      if (emailSent) {
+        toast.success(`Moved to ${statusLabel} • Email sent to candidate`);
+      } else {
+        toast.success(`Moved to ${statusLabel}`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to update status');
     }

@@ -3,8 +3,8 @@ import { Link, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { calculateProfileCompletion } from '../lib/profileCompletion';
 import {
-  LayoutDashboard, User, FileText, Bell, Briefcase, ClipboardList,
-  Video, Users, Star, LogOut, Loader2, Heart, Edit3, Menu, X
+  LayoutDashboard, User, FileText, Briefcase, ClipboardList,
+  Video, Users, LogOut, Loader2, Heart, Edit3, Menu, X
 } from 'lucide-react';
 
 export default function SeekerLayout() {
@@ -17,12 +17,10 @@ export default function SeekerLayout() {
       { icon: LayoutDashboard, label: 'Dashboard', path: '/seeker/dashboard' },
       { icon: User, label: 'My Profile', path: '/seeker/profile' },
       { icon: FileText, label: 'My CV', path: '/seeker/cv' },
-      { icon: Bell, label: 'Job Alerts', path: '/seeker/alerts' },
       { icon: Heart, label: 'Saved Jobs', path: '/seeker/saved' },
       { icon: ClipboardList, label: 'My Applications', path: '/seeker/applications' },
       { icon: Video, label: 'Video Interviews', path: '/seeker/interviews' },
       { icon: Users, label: 'My Network', path: '/seeker/network' },
-      { icon: Star, label: 'Subscription', path: '/seeker/subscriptions' },
     ],
     [],
   );
@@ -57,7 +55,7 @@ export default function SeekerLayout() {
   const offset = circumference - (percent / 100) * circumference;
 
   const sidebarContent = (
-    <>
+    <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 md:hidden">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--rf-green)]">RecruitFriend</p>
@@ -152,12 +150,12 @@ export default function SeekerLayout() {
           <span className="text-sm">Logout</span>
         </button>
       </div>
-    </>
+    </div>
   );
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[var(--rf-bg)] md:flex">
-      <aside className="hidden w-72 flex-shrink-0 flex-col overflow-y-auto bg-[var(--rf-navy)] text-white md:sticky md:top-0 md:flex md:h-screen">
+    <div className="min-h-screen overflow-x-hidden bg-[var(--rf-bg)] md:flex md:items-stretch">
+      <aside className="hidden w-72 flex-shrink-0 flex-col self-stretch bg-[var(--rf-navy)] text-white md:flex md:min-h-screen">
         {sidebarContent}
       </aside>
 
@@ -174,7 +172,7 @@ export default function SeekerLayout() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col bg-gray-50">
+      <div className="flex min-w-0 flex-1 flex-col bg-gray-50 md:min-h-screen">
         <div className="sticky top-0 z-30 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 shadow-sm md:hidden">
           <button
             type="button"

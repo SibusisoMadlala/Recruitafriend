@@ -27,7 +27,6 @@ import TalentSearch from './pages/TalentSearch';
 import EmployerSubscriptions from './pages/EmployerSubscriptions';
 import EmployerProfile from './pages/EmployerProfile';
 import EmployerAnalytics from './pages/EmployerAnalytics';
-import EmployerSettings from './pages/EmployerSettings';
 import MyListings from './pages/MyListings';
 import EmployerApplicants from './pages/EmployerApplicants';
 import EmployerInterviews from './pages/EmployerInterviews';
@@ -94,7 +93,6 @@ export const router = createBrowserRouter([
         { path: 'talent-search', Component: TalentSearch },
         { path: 'interviews', Component: EmployerInterviews },
         { path: 'analytics', Component: EmployerAnalytics },
-        { path: 'settings', Component: EmployerSettings },
         { path: 'subscriptions', Component: EmployerSubscriptions },
         { path: 'applicants/:jobId', Component: EmployerApplicants },
     ]

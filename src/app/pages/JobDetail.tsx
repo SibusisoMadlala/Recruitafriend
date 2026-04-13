@@ -5,7 +5,7 @@ import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
 import {
   MapPin, DollarSign, Briefcase, Calendar, Clock, Building2,
-  Share2, Flag, CheckCircle, Heart, Loader2
+  Share2, Flag, CheckCircle, Heart, Loader2, Globe
 } from 'lucide-react';
 
 export default function JobDetail() {
@@ -17,6 +17,22 @@ export default function JobDetail() {
   const [applying, setApplying] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [coverLetter, setCoverLetter] = useState('');
+  const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
+
+  const toDisplayLabel = (value: unknown, fallback = 'Not specified') => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return fallback;
+    return normalized
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const normalizeUrl = (value: unknown) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  };
 
   useEffect(() => {
     loadJob();
@@ -48,6 +64,21 @@ export default function JobDetail() {
       return;
     }
 
+    const screeningPayload = screeningQuestions.map((question, index) => {
+      const key = String(question.id || index);
+      return {
+        question_id: key,
+        question: question.prompt,
+        duration: question.duration,
+        answer: String(screeningAnswers[key] || '').trim(),
+      };
+    });
+
+    if (screeningPayload.some((entry) => !entry.answer)) {
+      toast.error('Please answer all interview questions before applying.');
+      return;
+    }
+
     setApplying(true);
     try {
       await apiCall('/applications', {
@@ -56,6 +87,7 @@ export default function JobDetail() {
           jobId: id,
           coverLetter: '',
           customLetter: false,
+          screeningAnswers: screeningPayload,
         }),
       });
       toast.success('Application submitted successfully!');
@@ -74,6 +106,21 @@ export default function JobDetail() {
       return;
     }
 
+    const screeningPayload = screeningQuestions.map((question, index) => {
+      const key = String(question.id || index);
+      return {
+        question_id: key,
+        question: question.prompt,
+        duration: question.duration,
+        answer: String(screeningAnswers[key] || '').trim(),
+      };
+    });
+
+    if (screeningPayload.some((entry) => !entry.answer)) {
+      toast.error('Please answer all interview questions before applying.');
+      return;
+    }
+
     setApplying(true);
     try {
       await apiCall('/applications', {
@@ -82,6 +129,7 @@ export default function JobDetail() {
           jobId: id,
           coverLetter,
           customLetter: true,
+          screeningAnswers: screeningPayload,
         }),
       });
       toast.success('Application submitted successfully!');
@@ -114,6 +162,95 @@ export default function JobDetail() {
     );
   }
 
+  const employer = (job?.employer && typeof job.employer === 'object') ? job.employer : {};
+  const employerSocial = (employer.social_links && typeof employer.social_links === 'object')
+    ? employer.social_links
+    : {};
+  const employerMeta = (employerSocial.employer && typeof employerSocial.employer === 'object')
+    ? employerSocial.employer
+    : {};
+
+  const companyName = String(
+    employer.name
+      || employerSocial.company_name
+      || employerSocial.companyName
+      || job.company
+      || 'Hiring Company'
+  ).trim();
+  const companyHeadline = String(employer.headline || '').trim();
+  const companySummary = String(employer.summary || '').trim();
+  const companyIndustry = String(employerMeta.industry || job.industry || '').trim();
+  const companySize = String(employerMeta.companySize || '').trim();
+  const registrationNumber = String(employerMeta.registrationNumber || '').trim();
+  const bbbeeLevelRaw = String(employerMeta.bbbeeLevel || '').trim();
+  const bbbeeLevel = bbbeeLevelRaw && bbbeeLevelRaw !== 'not-rated' ? `Level ${bbbeeLevelRaw}` : 'Not rated';
+  const bbbeeVerified = Boolean(employerMeta.bbbeeVerified);
+  const dayInLife = String(employerMeta.dayInLife || '').trim();
+  const cultureTags = Array.isArray(employerMeta.cultureTags)
+    ? employerMeta.cultureTags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+    : [];
+
+  const rawLocations = Array.isArray(employerMeta.locations)
+    ? employerMeta.locations.filter((location: unknown): location is string => typeof location === 'string' && location.trim().length > 0)
+    : [];
+  const primaryLocation = String(employer.location || job.location || [job.city, job.province].filter(Boolean).join(', ') || '').trim();
+  const companyLocations = Array.from(new Set([primaryLocation, ...rawLocations].filter(Boolean)));
+
+  const companyLinks = [
+    { label: 'Website', url: normalizeUrl(employerSocial.website) },
+    { label: 'LinkedIn', url: normalizeUrl(employerSocial.linkedin) },
+    { label: 'Facebook', url: normalizeUrl(employerSocial.facebook) },
+    { label: 'Instagram', url: normalizeUrl(employerSocial.instagram) },
+    { label: 'X / Twitter', url: normalizeUrl(employerSocial.twitter) },
+  ].filter((item) => item.url);
+
+  const companyLogo = String(
+    employer.avatar_url
+      || employerSocial.logo
+      || employerSocial.logoUrl
+      || employerSocial.companyLogo
+      || employerMeta.logo
+      || ''
+  ).trim();
+
+  const postedDateRaw = job.created_at || job.createdAt;
+  const postedDate = postedDateRaw ? new Date(postedDateRaw) : null;
+  const postedDateLabel = postedDate && !Number.isNaN(postedDate.getTime())
+    ? postedDate.toLocaleDateString()
+    : 'Recently';
+
+  const roleLocation = String(
+    job.location || [job.city, job.province].filter(Boolean).join(', ') || 'South Africa'
+  ).trim();
+
+  const employmentTypeLabel = toDisplayLabel(job.employment_type || job.jobType, 'Full-time');
+  const isRemoteRole = String(job.work_location || job.remoteType || '').toLowerCase() === 'remote';
+  const salaryMin = Number(job.salary_min ?? job.salaryMin ?? 0);
+  const salaryMax = Number(job.salary_max ?? job.salaryMax ?? 0);
+  const screeningQuestions = Array.isArray((job as any)?.screening_questions)
+    ? (job as any).screening_questions
+        .map((question: any, index: number) => ({
+          id: String(question?.id ?? index),
+          prompt: String(question?.prompt || '').trim(),
+          duration: String(question?.duration || '1min').trim(),
+        }))
+        .filter((question: { id: string; prompt: string; duration: string }) => question.prompt.length > 0)
+    : [];
+  const seekerIntroVideoUrl = String(
+    (profile as any)?.social_links?.video_introduction ||
+      (profile as any)?.social_links?.videoIntroduction ||
+      ''
+  ).trim();
+
+  const requirementsList = Array.isArray(job.requirements)
+    ? job.requirements.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const benefitsList = Array.isArray(job.benefits)
+    ? job.benefits.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+
+  const companyInitial = String(companyName || 'C').trim().charAt(0).toUpperCase() || 'C';
+
   return (
     <div className="bg-[var(--rf-bg)] min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -133,8 +270,14 @@ export default function JobDetail() {
               {/* Company Banner */}
               <div className="h-32 bg-gradient-to-r from-[var(--rf-navy)] to-[#0d3a5f] relative">
                 <div className="absolute -bottom-8 left-6">
-                  <div className="w-20 h-20 bg-white rounded-[var(--rf-radius-md)] shadow-lg flex items-center justify-center">
-                    <Building2 className="w-10 h-10 text-[var(--rf-green)]" />
+                  <div className="w-20 h-20 bg-white rounded-[var(--rf-radius-md)] shadow-lg flex items-center justify-center overflow-hidden">
+                    {companyLogo ? (
+                      <img src={companyLogo} alt={`${companyName} logo`} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gray-100 text-2xl font-bold text-[var(--rf-navy)]">
+                        {companyInitial}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -145,17 +288,17 @@ export default function JobDetail() {
                     <h1 className="text-3xl font-bold text-[var(--rf-navy)] mb-2">{job.title}</h1>
                     <div className="flex items-center space-x-2 text-[var(--rf-muted)] mb-2">
                       <Building2 className="w-5 h-5" />
-                      <span className="font-semibold">{job.company || 'Company Name'}</span>
+                      <span className="font-semibold">{companyName}</span>
                       <CheckCircle className="w-5 h-5 text-[var(--rf-green)]" />
                     </div>
                     <div className="flex flex-wrap gap-3 text-sm text-[var(--rf-muted)]">
                       <span className="flex items-center">
                         <MapPin className="w-4 h-4 mr-1" />
-                        {job.location}
+                        {roleLocation}
                       </span>
                       <span className="flex items-center">
                         <Calendar className="w-4 h-4 mr-1" />
-                        Posted {new Date(job.createdAt).toLocaleDateString()}
+                        Posted {postedDateLabel}
                       </span>
                       <span className="flex items-center">
                         <Clock className="w-4 h-4 mr-1" />
@@ -171,9 +314,9 @@ export default function JobDetail() {
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2 mb-6">
                   <span className="px-4 py-1.5 bg-gray-100 text-[var(--rf-text)] rounded-[var(--rf-radius-pill)] text-sm font-medium">
-                    {job.jobType || 'Full-time'}
+                    {employmentTypeLabel}
                   </span>
-                  {job.remoteType === 'remote' && (
+                  {isRemoteRole && (
                     <span className="px-4 py-1.5 bg-[var(--rf-green)] bg-opacity-10 text-[var(--rf-green)] rounded-[var(--rf-radius-pill)] text-sm font-semibold">
                       Remote
                     </span>
@@ -234,18 +377,30 @@ export default function JobDetail() {
                   {activeTab === 'requirements' && (
                     <div>
                       <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-3">Requirements</h3>
-                      <p className="text-[var(--rf-muted)]">
-                        {job.requirements || 'Requirements will be discussed during the interview process.'}
-                      </p>
+                      {requirementsList.length > 0 ? (
+                        <ul className="list-disc space-y-2 pl-5 text-[var(--rf-muted)]">
+                          {requirementsList.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[var(--rf-muted)]">Requirements will be discussed during the interview process.</p>
+                      )}
                     </div>
                   )}
                   
                   {activeTab === 'benefits' && (
                     <div>
                       <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-3">Benefits</h3>
-                      <p className="text-[var(--rf-muted)]">
-                        {job.benefits || 'Competitive salary and benefits package.'}
-                      </p>
+                      {benefitsList.length > 0 ? (
+                        <ul className="list-disc space-y-2 pl-5 text-[var(--rf-muted)]">
+                          {benefitsList.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[var(--rf-muted)]">Competitive salary and benefits package.</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -271,16 +426,16 @@ export default function JobDetail() {
 
           {/* Sidebar */}
           <div className="lg:col-span-1">
-            <div className="sticky top-20 space-y-6">
+            <div className="space-y-6 lg:sticky lg:top-20">
               {/* Apply Card */}
               <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6">
                 <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-4">Apply for this Job</h3>
                 
-                {job.salaryMin && job.salaryMax && (
+                {salaryMin > 0 && salaryMax > 0 && (
                   <div className="mb-6 p-4 bg-[var(--rf-green)] bg-opacity-10 rounded-[var(--rf-radius-md)]">
                     <div className="text-sm text-[var(--rf-muted)] mb-1">Salary Range</div>
                     <div className="text-2xl font-bold text-[var(--rf-navy)]">
-                      R{job.salaryMin.toLocaleString()} - R{job.salaryMax.toLocaleString()}
+                      R{salaryMin.toLocaleString()} - R{salaryMax.toLocaleString()}
                     </div>
                     <div className="text-xs text-[var(--rf-muted)]">per month</div>
                   </div>
@@ -292,6 +447,49 @@ export default function JobDetail() {
                   </div>
                 ) : isSeeker ? (
                   <div className="space-y-3">
+                    {seekerIntroVideoUrl && (
+                      <div className="rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] p-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--rf-muted)]">Your intro video</div>
+                        <video
+                          src={seekerIntroVideoUrl}
+                          controls
+                          className="w-full rounded-[var(--rf-radius-md)] border border-gray-200"
+                          preload="metadata"
+                        />
+                      </div>
+                    )}
+
+                    {screeningQuestions.length > 0 && (
+                      <div className="space-y-3 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 p-3">
+                        <div className="text-sm font-semibold text-[var(--rf-navy)]">Interview Questions</div>
+                        <p className="text-xs text-[var(--rf-muted)]">Answer the questions below before submitting your application.</p>
+                        <div className="space-y-3">
+                          {screeningQuestions.map((question, index) => (
+                            <div key={question.id} className="space-y-1.5">
+                              <label className="block text-xs font-semibold text-[var(--rf-text)]">
+                                Q{index + 1}. {question.prompt}
+                                {question.duration ? (
+                                  <span className="ml-1 text-[var(--rf-muted)] font-normal">({question.duration})</span>
+                                ) : null}
+                              </label>
+                              <textarea
+                                value={screeningAnswers[question.id] || ''}
+                                onChange={(e) =>
+                                  setScreeningAnswers((prev) => ({
+                                    ...prev,
+                                    [question.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Type your answer"
+                                rows={3}
+                                className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <button
                       onClick={handleQuickApply}
                       disabled={applying}
@@ -339,23 +537,111 @@ export default function JobDetail() {
               </div>
 
               {/* Company Info Card */}
-              <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6">
-                <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-4">Company Info</h3>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm text-[var(--rf-muted)]">Company</div>
-                    <div className="font-semibold text-[var(--rf-text)]">{job.company || 'Company Name'}</div>
+              <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 sm:p-6">
+                <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-4">Company Profile</h3>
+                <div className="space-y-5 text-sm min-w-0">
+                  <div className="flex items-start gap-3 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] p-3">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                      {companyLogo ? (
+                        <img src={companyLogo} alt={`${companyName} logo`} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-base font-bold text-[var(--rf-navy)]">
+                          {companyInitial}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--rf-text)] text-base break-words">{companyName}</div>
+                      <p className="mt-1 text-xs text-[var(--rf-muted)]">Hiring company</p>
+                    </div>
                   </div>
+
                   <div>
-                    <div className="text-sm text-[var(--rf-muted)]">Industry</div>
-                    <div className="font-semibold text-[var(--rf-text)]">{job.industry || 'Various'}</div>
+                    {companyHeadline && <p className="mt-1 text-[var(--rf-muted)]">{companyHeadline}</p>}
+                    {bbbeeVerified && (
+                      <span className="inline-flex mt-2 items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
+                        Verified business
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <div className="text-sm text-[var(--rf-muted)]">Website</div>
-                    <a href="#" className="font-semibold text-[var(--rf-green)] hover:underline">
-                      View website
-                    </a>
+
+                  {(companySummary || dayInLife) && (
+                    <div className="space-y-2 border-t border-[var(--rf-border)] pt-4">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">About</div>
+                        <p className="mt-1 whitespace-pre-line text-[var(--rf-text)]">{companySummary || 'No company overview shared yet.'}</p>
+                      </div>
+                      {dayInLife && (
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">Day in the life</div>
+                          <p className="mt-1 whitespace-pre-line text-[var(--rf-text)]">{dayInLife}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-[var(--rf-border)] pt-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">Industry</div>
+                      <div className="font-semibold text-[var(--rf-text)]">{companyIndustry || 'Not specified'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">Company size</div>
+                      <div className="font-semibold text-[var(--rf-text)]">{companySize || 'Not specified'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">Registration number</div>
+                      <div className="font-semibold text-[var(--rf-text)]">{registrationNumber || 'Not shared'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)]">B-BBEE</div>
+                      <div className="font-semibold text-[var(--rf-text)]">{bbbeeLevel}</div>
+                    </div>
                   </div>
+
+                  {companyLocations.length > 0 && (
+                    <div className="border-t border-[var(--rf-border)] pt-4">
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)] mb-2">Locations</div>
+                      <ul className="space-y-1">
+                        {companyLocations.map((location) => (
+                          <li key={location} className="text-[var(--rf-text)]">• {location}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {cultureTags.length > 0 && (
+                    <div className="border-t border-[var(--rf-border)] pt-4">
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)] mb-2">Culture</div>
+                      <div className="flex flex-wrap gap-2">
+                        {cultureTags.map((tag) => (
+                          <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-[var(--rf-text)]">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {companyLinks.length > 0 && (
+                    <div className="border-t border-[var(--rf-border)] pt-4">
+                      <div className="text-xs uppercase tracking-wide text-[var(--rf-muted)] mb-2">Company links</div>
+                      <div className="space-y-2">
+                        {companyLinks.map((link) => (
+                          <a
+                            key={link.label}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex max-w-full items-center text-[var(--rf-green)] hover:underline break-all"
+                          >
+                            <Globe className="mr-1.5 h-3.5 w-3.5" />
+                            {link.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

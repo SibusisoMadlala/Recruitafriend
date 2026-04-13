@@ -65,6 +65,11 @@ export interface Job {
   requirements?: string[];
   benefits?: string[];
   interview_type?: string;
+  screening_questions?: Array<{
+    id?: string | number;
+    prompt: string;
+    duration?: string;
+  }>;
   status: 'active' | 'closed' | 'draft';
   views: number;
   created_at: string;
@@ -80,6 +85,12 @@ export interface Application {
   custom_letter?: string;
   status: 'applied' | 'viewed' | 'shortlisted' | 'interview' | 'offer' | 'rejected';
   notes?: string;
+  screening_answers?: Array<{
+    question_id?: string | number;
+    question: string;
+    answer: string;
+    duration?: string;
+  }>;
   created_at: string;
   updated_at?: string;
   /** Populated via join */

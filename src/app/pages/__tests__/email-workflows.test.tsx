@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 
 import SeekerAlerts from '../SeekerAlerts';
 import Networking from '../Networking';
-import EmployerSettings from '../EmployerSettings';
 
 const apiCallMock = vi.fn(async (endpoint: string, options?: RequestInit & { requireAuth?: boolean }) => {
   if (endpoint === '/alerts' && (!options?.method || options.method === 'GET')) {
@@ -27,14 +26,6 @@ const apiCallMock = vi.fn(async (endpoint: string, options?: RequestInit & { req
 
   if (endpoint === '/referrals' && options?.method === 'POST') {
     return { referral: { id: 'ref-1', referee_email: 'friend@example.com', status: 'invited' } };
-  }
-
-  if (endpoint === '/auth/profile' && options?.method === 'PUT') {
-    return { profile: { id: 'employer-1' } };
-  }
-
-  if (endpoint === '/email/team-invites/send' && options?.method === 'POST') {
-    return { sent: 1, failed: 0, total: 1 };
   }
 
   return {};
@@ -96,16 +87,4 @@ describe('Email-triggered workflow interactions', () => {
     expect(screen.getByRole('button', { name: /Send referral invite email/i })).toBeInTheDocument();
   });
 
-  it('renders employer team invite workflow controls', async () => {
-    const user = userEvent.setup();
-
-    render(
-      <MemoryRouter>
-        <EmployerSettings />
-      </MemoryRouter>,
-    );
-
-    await user.click(await screen.findByRole('button', { name: /^Team$/i }));
-    expect(await screen.findByRole('button', { name: /Save Team List/i })).toBeInTheDocument();
-  });
 });

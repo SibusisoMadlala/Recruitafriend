@@ -210,38 +210,7 @@ export default function EmployerDashboard() {
           </div>
 
           {/* Recommended Candidates (Locked) */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-[#0A2540]">Recommended</h2>
-            
-            <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white min-h-[180px]">
-              {/* Unlock Overlay */}
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-center p-6">
-                <div className="bg-white p-3 rounded-full shadow-lg mb-4 ring-1 ring-gray-100">
-                   <Briefcase className="w-6 h-6 text-[#00C853]" />
-                </div>
-                <h3 className="font-bold text-[#0A2540] mb-2">Unlock AI Matching</h3>
-                <p className="text-sm text-gray-600 mb-4 px-4 leading-relaxed">
-                  Upgrade to Growth to see top matched candidates instantly.
-                </p>
-                <Button size="sm" className="bg-[#FF6B35] hover:bg-[#FF8F6B] text-white shadow-md rounded-full px-6">
-                  Upgrade Plan
-                </Button>
-              </div>
-
-              {/* Background Skeleton */}
-              <div className="p-4 space-y-3 opacity-30 select-none pointer-events-none" aria-hidden="true">
-                {[1, 2, 3].map((_, i) => (
-                  <div key={i} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="h-10 w-10 bg-gray-300 rounded-full"></div>
-                    <div className="space-y-2 flex-1">
-                      <div className="h-3 w-3/4 bg-gray-300 rounded"></div>
-                      <div className="h-2 w-1/2 bg-gray-300 rounded"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          
 
           {/* Listing Performance */}
           <div className="space-y-4">

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { 
-   Building2, MapPin, Globe, Upload, Linkedin, Facebook, Instagram, Twitter, Loader2
+   Building2, MapPin, Globe, Upload, Linkedin, Facebook, Instagram, Twitter, Loader2, ExternalLink, CheckCircle2
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
@@ -68,6 +69,7 @@ export default function EmployerProfile() {
    const { profile, refreshProfile } = useAuth();
    const logoInputRef = useRef<HTMLInputElement | null>(null);
    const [activeTab, setActiveTab] = useState('identity');
+   const [previewOpen, setPreviewOpen] = useState(false);
    const [saving, setSaving] = useState(false);
    const [newTag, setNewTag] = useState('');
    const [form, setForm] = useState<CompanyForm>({
@@ -138,6 +140,31 @@ export default function EmployerProfile() {
       const filled = checks.filter(Boolean).length;
       return Math.round((filled / checks.length) * 100);
    }, [form]);
+
+   const companyLocations = useMemo(() => {
+      const parsed = form.locationsText
+         .split('\n')
+         .map((item) => item.trim())
+         .filter(Boolean);
+
+      if (form.location.trim() && !parsed.some((item) => item.toLowerCase() === form.location.trim().toLowerCase())) {
+         return [form.location.trim(), ...parsed];
+      }
+
+      return parsed;
+   }, [form.location, form.locationsText]);
+
+   const socialLinks = useMemo(() => (
+      [
+         { label: 'Website', value: form.website, icon: Globe },
+         { label: 'LinkedIn', value: form.linkedin, icon: Linkedin },
+         { label: 'Facebook', value: form.facebook, icon: Facebook },
+         { label: 'Instagram', value: form.instagram, icon: Instagram },
+         { label: 'X / Twitter', value: form.twitter, icon: Twitter },
+      ].filter((item) => item.value.trim())
+   ), [form.website, form.linkedin, form.facebook, form.instagram, form.twitter]);
+
+   const bbbeeLabel = form.bbbeeLevel === 'not-rated' ? 'Not rated' : `Level ${form.bbbeeLevel}`;
 
    const updateForm = <K extends keyof CompanyForm>(key: K, value: CompanyForm[K]) => {
       setForm((prev) => ({ ...prev, [key]: value }));
@@ -279,15 +306,28 @@ export default function EmployerProfile() {
     <div className="max-w-5xl mx-auto space-y-8 pb-20">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-           <h1 className="text-3xl font-bold text-[#0A2540]">Company Profile</h1>
-           <p className="text-gray-500">Manage your company branding and information.</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="flex items-start gap-6">
+           {/* Company Logo */}
+           <div className="w-28 h-28 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 overflow-hidden flex-shrink-0 shadow-sm">
+              {form.avatarUrl ? (
+                 <img src={form.avatarUrl} alt="Company logo" className="w-full h-full object-cover" />
+              ) : (
+                 <Building2 className="w-12 h-12 text-gray-400" />
+              )}
+           </div>
+           <div>
+              <h1 className="text-3xl font-bold text-[#0A2540]">Company Profile</h1>
+              <p className="text-gray-500">Manage your company branding and information.</p>
+              {form.avatarUrl && (
+                 <p className="text-xs text-gray-400 mt-2">Logo uploaded • Click Identity tab to change</p>
+              )}
+           </div>
         </div>
         <Button
           variant="outline"
           className="border-[#0A2540] text-[#0A2540] hover:bg-gray-50"
-          onClick={() => toast.info('Candidate preview view is coming soon.')}
+               onClick={() => setPreviewOpen(true)}
         >
            <EyeIcon className="w-4 h-4 mr-2" /> Preview as Candidate
         </Button>
@@ -660,6 +700,156 @@ export default function EmployerProfile() {
 
         </div>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+            <DialogHeader className="px-6 pt-6 pb-0">
+               <DialogTitle>Candidate Preview</DialogTitle>
+               <DialogDescription>
+                  This preview uses your current company profile draft, including unsaved edits.
+               </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-6 pb-6">
+               <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="h-36 bg-gradient-to-r from-[#0A2540] to-[#0f4c75] relative">
+                     <div className="absolute -bottom-10 left-6 flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white shadow-lg">
+                        {form.avatarUrl ? (
+                           <img src={form.avatarUrl} alt="Company logo preview" className="h-full w-full object-cover" />
+                        ) : (
+                           <Building2 className="h-10 w-10 text-[#00C853]" />
+                        )}
+                     </div>
+                  </div>
+
+                  <div className="px-6 pb-6 pt-14">
+                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                           <div className="flex flex-wrap items-center gap-3">
+                              <h2 className="text-3xl font-bold text-[#0A2540]">{form.name.trim() || 'Your Company Name'}</h2>
+                              {form.bbbeeVerified ? (
+                                 <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                                    <CheckCircle2 className="h-3.5 w-3.5" /> Verified business
+                                 </span>
+                              ) : null}
+                           </div>
+                           <p className="mt-2 text-base text-gray-600">
+                              {form.headline.trim() || 'Your headline will appear here for candidates.'}
+                           </p>
+
+                           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
+                              {form.location.trim() ? (
+                                 <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {form.location.trim()}</span>
+                              ) : null}
+                              {form.industry.trim() ? (
+                                 <span className="inline-flex items-center gap-1.5"><Building2 className="h-4 w-4" /> {form.industry}</span>
+                              ) : null}
+                              {form.companySize.trim() ? <span>{form.companySize} employees</span> : null}
+                              <span>{bbbeeLabel}</span>
+                           </div>
+                        </div>
+
+                        {socialLinks.length > 0 ? (
+                           <div className="grid gap-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm min-w-[240px]">
+                              <p className="font-semibold text-[#0A2540]">Company links</p>
+                              {socialLinks.map((link) => {
+                                 const Icon = link.icon;
+                                 return (
+                                    <a
+                                       key={link.label}
+                                       href={link.value}
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       className="inline-flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-gray-700 transition-colors hover:bg-gray-100 hover:text-[#0A2540]"
+                                    >
+                                       <span className="inline-flex items-center gap-2 min-w-0">
+                                          <Icon className="h-4 w-4 flex-shrink-0" />
+                                          <span className="truncate">{link.label}</span>
+                                       </span>
+                                       <ExternalLink className="h-4 w-4 flex-shrink-0" />
+                                    </a>
+                                 );
+                              })}
+                           </div>
+                        ) : null}
+                     </div>
+
+                     <div className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+                        <div className="space-y-6">
+                           <section>
+                              <h3 className="text-lg font-semibold text-[#0A2540]">About the company</h3>
+                              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">
+                                 {form.summary.trim() || 'Your company overview will appear here for candidates once added.'}
+                              </p>
+                           </section>
+
+                           <section>
+                              <h3 className="text-lg font-semibold text-[#0A2540]">Culture & benefits</h3>
+                              {form.cultureTags.length > 0 ? (
+                                 <div className="mt-3 flex flex-wrap gap-2">
+                                    {form.cultureTags.map((tag) => (
+                                       <Badge key={tag} variant="secondary" className="rounded-full px-3 py-1 text-xs">
+                                          {tag}
+                                       </Badge>
+                                    ))}
+                                 </div>
+                              ) : (
+                                 <p className="mt-2 text-sm text-gray-500">No culture tags added yet.</p>
+                              )}
+
+                              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-gray-600">
+                                 {form.dayInLife.trim() || 'Describe a day in the life at your company so candidates know what to expect.'}
+                              </p>
+                           </section>
+                        </div>
+
+                        <div className="space-y-4">
+                           <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                              <h3 className="text-base font-semibold text-[#0A2540]">Company snapshot</h3>
+                              <dl className="mt-4 space-y-3 text-sm">
+                                 <div>
+                                    <dt className="text-gray-500">Industry</dt>
+                                    <dd className="font-medium text-[#0A2540]">{form.industry || 'Not specified'}</dd>
+                                 </div>
+                                 <div>
+                                    <dt className="text-gray-500">Company size</dt>
+                                    <dd className="font-medium text-[#0A2540]">{form.companySize || 'Not specified'}</dd>
+                                 </div>
+                                 <div>
+                                    <dt className="text-gray-500">Registration number</dt>
+                                    <dd className="font-medium text-[#0A2540]">{form.registrationNumber || 'Not shared'}</dd>
+                                 </div>
+                                 <div>
+                                    <dt className="text-gray-500">B-BBEE status</dt>
+                                    <dd className="font-medium text-[#0A2540]">
+                                       {bbbeeLabel}{form.bbbeeVerified ? ' • Verified' : ''}
+                                    </dd>
+                                 </div>
+                              </dl>
+                           </section>
+
+                           <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                              <h3 className="text-base font-semibold text-[#0A2540]">Locations</h3>
+                              {companyLocations.length > 0 ? (
+                                 <ul className="mt-3 space-y-2 text-sm text-gray-600">
+                                    {companyLocations.map((location) => (
+                                       <li key={location} className="inline-flex items-start gap-2">
+                                          <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#00C853]" />
+                                          <span>{location}</span>
+                                       </li>
+                                    ))}
+                                 </ul>
+                              ) : (
+                                 <p className="mt-3 text-sm text-gray-500">No locations added yet.</p>
+                              )}
+                           </section>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </DialogContent>
+      </Dialog>
     </div>
   );
 }

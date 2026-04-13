@@ -37,14 +37,153 @@ interface PostJobFormValues {
   interview_type: string;
 }
 
+type ScreeningQuestion = {
+   id: number;
+   prompt: string;
+   duration: '1min' | '2min' | '3min';
+};
+
+const INDUSTRY_OPTIONS = [
+   { value: 'accounting-auditing', label: 'Accounting & Auditing' },
+   { value: 'admin-office-support', label: 'Admin, Office & Support' },
+   { value: 'agriculture-forestry-fishing', label: 'Agriculture, Forestry & Fishing' },
+   { value: 'architecture-planning', label: 'Architecture & Planning' },
+   { value: 'automotive', label: 'Automotive' },
+   { value: 'banking-financial-services', label: 'Banking & Financial Services' },
+   { value: 'construction-built-environment', label: 'Construction & Built Environment' },
+   { value: 'consulting', label: 'Consulting' },
+   { value: 'creative-media-advertising', label: 'Creative, Media & Advertising' },
+   { value: 'customer-service-bpo', label: 'Customer Service & BPO' },
+   { value: 'education-training', label: 'Education & Training' },
+   { value: 'energy-utilities', label: 'Energy & Utilities' },
+   { value: 'engineering', label: 'Engineering' },
+   { value: 'fmcg-retail-wholesale', label: 'FMCG, Retail & Wholesale' },
+   { value: 'government-public-sector', label: 'Government & Public Sector' },
+   { value: 'healthcare-medical-pharmaceutical', label: 'Healthcare, Medical & Pharmaceutical' },
+   { value: 'hospitality-tourism-events', label: 'Hospitality, Tourism & Events' },
+   { value: 'hr-recruitment', label: 'HR & Recruitment' },
+   { value: 'insurance', label: 'Insurance' },
+   { value: 'it-telecommunications', label: 'IT & Telecommunications' },
+   { value: 'legal-compliance', label: 'Legal & Compliance' },
+   { value: 'logistics-transport-supply-chain', label: 'Logistics, Transport & Supply Chain' },
+   { value: 'manufacturing-production', label: 'Manufacturing & Production' },
+   { value: 'marketing-sales', label: 'Marketing & Sales' },
+   { value: 'mining-resources', label: 'Mining & Resources' },
+   { value: 'ngo-non-profit', label: 'NGO & Non-Profit' },
+   { value: 'property-real-estate', label: 'Property & Real Estate' },
+   { value: 'security-safety', label: 'Security & Safety' },
+   { value: 'science-research', label: 'Science & Research' },
+   { value: 'sports-fitness', label: 'Sports & Fitness' },
+   { value: 'trade-services-artisan', label: 'Trade Services & Artisan' },
+   { value: 'other', label: 'Other' },
+];
+
+const JOB_CATEGORY_OPTIONS = [
+   { value: 'accounting-finance', label: 'Accounting & Finance' },
+   { value: 'administration', label: 'Administration' },
+   { value: 'business-analysis', label: 'Business Analysis' },
+   { value: 'call-centre', label: 'Call Centre' },
+   { value: 'construction', label: 'Construction' },
+   { value: 'customer-support', label: 'Customer Support' },
+   { value: 'data-analytics', label: 'Data & Analytics' },
+   { value: 'design-ux-ui', label: 'Design (UX/UI/Graphic)' },
+   { value: 'driver-delivery', label: 'Driver & Delivery' },
+   { value: 'education-teaching', label: 'Education & Teaching' },
+   { value: 'engineering-technical', label: 'Engineering & Technical' },
+   { value: 'executive-management', label: 'Executive Management' },
+   { value: 'healthcare-nursing', label: 'Healthcare & Nursing' },
+   { value: 'hospitality-catering', label: 'Hospitality & Catering' },
+   { value: 'hr-payroll', label: 'HR & Payroll' },
+   { value: 'legal', label: 'Legal' },
+   { value: 'logistics-warehousing', label: 'Logistics & Warehousing' },
+   { value: 'maintenance-repairs', label: 'Maintenance & Repairs' },
+   { value: 'marketing-digital', label: 'Marketing & Digital' },
+   { value: 'operations', label: 'Operations' },
+   { value: 'procurement', label: 'Procurement' },
+   { value: 'product-management', label: 'Product Management' },
+   { value: 'project-management', label: 'Project Management' },
+   { value: 'quality-assurance', label: 'Quality Assurance' },
+   { value: 'research-development', label: 'Research & Development' },
+   { value: 'retail-sales-assistant', label: 'Retail Sales Assistant' },
+   { value: 'sales-business-development', label: 'Sales & Business Development' },
+   { value: 'security', label: 'Security' },
+   { value: 'software-development', label: 'Software Development' },
+   { value: 'system-network-admin', label: 'System & Network Administration' },
+   { value: 'trade-artisan', label: 'Trade & Artisan' },
+   { value: 'writing-content', label: 'Writing & Content' },
+   { value: 'other', label: 'Other' },
+];
+
+const PROVINCE_OPTIONS = [
+   { value: 'ec', label: 'Eastern Cape' },
+   { value: 'fs', label: 'Free State' },
+   { value: 'gp', label: 'Gauteng' },
+   { value: 'kzn', label: 'KwaZulu-Natal' },
+   { value: 'lp', label: 'Limpopo' },
+   { value: 'mp', label: 'Mpumalanga' },
+   { value: 'nc', label: 'Northern Cape' },
+   { value: 'nw', label: 'North West' },
+   { value: 'wc', label: 'Western Cape' },
+];
+
+const EXPERIENCE_LEVEL_OPTIONS = [
+   { value: 'internship', label: 'Internship / Learnership' },
+   { value: 'entry-level', label: 'Entry Level (0-1 years)' },
+   { value: 'junior', label: 'Junior (1-2 years)' },
+   { value: 'mid-level', label: 'Mid-Level (3-5 years)' },
+   { value: 'senior', label: 'Senior (5-8 years)' },
+   { value: 'lead', label: 'Lead (8+ years)' },
+   { value: 'manager', label: 'Manager' },
+   { value: 'director', label: 'Director / Head of Department' },
+   { value: 'executive', label: 'Executive (C-Suite)' },
+];
+
+const QUALIFICATION_OPTIONS = [
+   { value: 'none', label: 'No Formal Qualification' },
+   { value: 'grade10', label: 'Grade 10' },
+   { value: 'grade12-matric', label: 'Grade 12 / Matric' },
+   { value: 'certificate', label: 'Certificate' },
+   { value: 'higher-certificate', label: 'Higher Certificate' },
+   { value: 'national-diploma', label: 'National Diploma' },
+   { value: 'advanced-diploma', label: 'Advanced Diploma' },
+   { value: 'bachelors-degree', label: "Bachelor's Degree" },
+   { value: 'btech', label: 'BTech' },
+   { value: 'postgraduate-diploma', label: 'Postgraduate Diploma' },
+   { value: 'honours', label: 'Honours Degree' },
+   { value: 'masters', label: "Master's Degree" },
+   { value: 'doctorate', label: 'Doctorate (PhD)' },
+   { value: 'professional-certification', label: 'Professional Certification' },
+   { value: 'trade-test', label: 'Trade Test / Artisan Qualification' },
+];
+
 export default function PostJob() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([
+      { id: 1, prompt: '', duration: '1min' },
+   ]);
 
   const { register, handleSubmit, getValues, setValue, watch, formState: { errors } } = useForm<PostJobFormValues>({
     defaultValues: { hide_salary: false, positions: 1, interview_type: 'video' }
   });
+
+   const selectedInterviewType = watch('interview_type') || 'video';
+
+   const addScreeningQuestion = () => {
+      setScreeningQuestions((prev) => [
+         ...prev,
+         { id: Date.now(), prompt: '', duration: '1min' },
+      ]);
+   };
+
+   const removeScreeningQuestion = (id: number) => {
+      setScreeningQuestions((prev) => (prev.length > 1 ? prev.filter((q) => q.id !== id) : prev));
+   };
+
+   const updateScreeningQuestion = (id: number, patch: Partial<ScreeningQuestion>) => {
+      setScreeningQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+   };
 
   const onPublish = async (data: PostJobFormValues) => {
     setSubmitting(true);
@@ -55,6 +194,13 @@ export default function PostJob() {
       const benefitsArr = data.benefits
         ? data.benefits.split('\n').filter(Boolean)
         : [];
+         const normalizedScreeningQuestions = screeningQuestions
+            .map((question) => ({
+               id: question.id,
+               prompt: String(question.prompt || '').trim(),
+               duration: question.duration,
+            }))
+            .filter((question) => question.prompt.length > 0);
 
       await apiCall('/jobs', {
         method: 'POST',
@@ -72,6 +218,7 @@ export default function PostJob() {
           requirements: requirementsArr,
           benefits: benefitsArr,
           interview_type: data.interview_type,
+               screening_questions: normalizedScreeningQuestions,
         }),
       });
 
@@ -146,10 +293,9 @@ export default function PostJob() {
                          <SelectValue placeholder="Select Industry" />
                       </SelectTrigger>
                       <SelectContent>
-                         <SelectItem value="it">Information Technology</SelectItem>
-                         <SelectItem value="finance">Finance</SelectItem>
-                         <SelectItem value="health">Healthcare</SelectItem>
-                         <SelectItem value="eng">Engineering</SelectItem>
+                         {INDUSTRY_OPTIONS.map((option) => (
+                           <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                         ))}
                       </SelectContent>
                    </Select>
                 </div>
@@ -161,8 +307,9 @@ export default function PostJob() {
                          <SelectValue placeholder="Select Category" />
                       </SelectTrigger>
                       <SelectContent>
-                         <SelectItem value="dev">Software Development</SelectItem>
-                         <SelectItem value="design">Design</SelectItem>
+                         {JOB_CATEGORY_OPTIONS.map((option) => (
+                           <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                         ))}
                       </SelectContent>
                    </Select>
                 </div>
@@ -203,9 +350,9 @@ export default function PostJob() {
                          <SelectValue placeholder="Select Province" />
                       </SelectTrigger>
                       <SelectContent>
-                         <SelectItem value="wc">Western Cape</SelectItem>
-                         <SelectItem value="gp">Gauteng</SelectItem>
-                         <SelectItem value="kzn">KwaZulu-Natal</SelectItem>
+                         {PROVINCE_OPTIONS.map((option) => (
+                           <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                         ))}
                       </SelectContent>
                    </Select>
                 </div>
@@ -266,9 +413,9 @@ export default function PostJob() {
                              <SelectValue placeholder="Select Level" />
                           </SelectTrigger>
                           <SelectContent>
-                             <SelectItem value="junior">Junior (1-2 yrs)</SelectItem>
-                             <SelectItem value="mid">Mid-Level (3-5 yrs)</SelectItem>
-                             <SelectItem value="senior">Senior (5+ yrs)</SelectItem>
+                             {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
+                               <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                             ))}
                           </SelectContent>
                        </Select>
                     </div>
@@ -280,9 +427,9 @@ export default function PostJob() {
                              <SelectValue placeholder="Select Qualification" />
                           </SelectTrigger>
                           <SelectContent>
-                             <SelectItem value="matric">Matric</SelectItem>
-                             <SelectItem value="degree">Degree</SelectItem>
-                             <SelectItem value="honours">Honours</SelectItem>
+                             {QUALIFICATION_OPTIONS.map((option) => (
+                               <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                             ))}
                           </SelectContent>
                        </Select>
                     </div>
@@ -304,7 +451,14 @@ export default function PostJob() {
               <p className="text-gray-600 mb-4">How would you like to screen candidates?</p>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                 <div className="border rounded-xl p-4 hover:border-[#00C853] cursor-pointer bg-blue-50/50 border-blue-200">
+                 <div
+                    className={`border rounded-xl p-4 hover:border-[#00C853] cursor-pointer transition-colors ${
+                      selectedInterviewType === 'standard'
+                        ? 'bg-blue-50/50 border-blue-300 ring-2 ring-blue-200'
+                        : 'bg-white border-gray-200'
+                    }`}
+                    onClick={() => setValue('interview_type', 'standard', { shouldDirty: true })}
+                 >
                     <div className="p-2 bg-blue-100 rounded-lg w-fit mb-3 text-blue-700">
                        <Building2 className="w-5 h-5" />
                     </div>
@@ -312,7 +466,14 @@ export default function PostJob() {
                     <p className="text-xs text-gray-500">CV + Cover Letter only. Manual review.</p>
                  </div>
 
-                 <div className="border rounded-xl p-4 hover:border-[#00C853] cursor-pointer bg-white">
+                 <div
+                    className={`border rounded-xl p-4 hover:border-[#00C853] cursor-pointer transition-colors ${
+                      selectedInterviewType === 'live'
+                        ? 'bg-purple-50/50 border-purple-300 ring-2 ring-purple-200'
+                        : 'bg-white border-gray-200'
+                    }`}
+                    onClick={() => setValue('interview_type', 'live', { shouldDirty: true })}
+                 >
                     <div className="p-2 bg-purple-100 rounded-lg w-fit mb-3 text-purple-700">
                        <Video className="w-5 h-5" />
                     </div>
@@ -320,8 +481,15 @@ export default function PostJob() {
                     <p className="text-xs text-gray-500">Schedule video calls directly.</p>
                  </div>
 
-                 <div className="border-2 border-[#00C853] rounded-xl p-4 cursor-pointer bg-green-50/30 relative">
-                    <div className="absolute top-2 right-2 text-yellow-500">★</div>
+                 <div
+                    className={`rounded-xl p-4 cursor-pointer relative transition-colors ${
+                      selectedInterviewType === 'video'
+                        ? 'border-2 border-[#00C853] bg-green-50/30 ring-2 ring-green-100'
+                        : 'border border-gray-200 bg-white hover:border-[#00C853]'
+                    }`}
+                    onClick={() => setValue('interview_type', 'video', { shouldDirty: true })}
+                 >
+                    {selectedInterviewType === 'video' && <div className="absolute top-2 right-2 text-yellow-500">★</div>}
                     <div className="p-2 bg-green-100 rounded-lg w-fit mb-3 text-green-700">
                        <CheckCircle className="w-5 h-5" />
                     </div>
@@ -330,25 +498,55 @@ export default function PostJob() {
                  </div>
               </div>
 
-              {/* Mock Screening Questions UI */}
               <div className="space-y-4 border-t pt-6">
                  <h3 className="font-bold text-[#0A2540]">Screening Questions</h3>
+                 {selectedInterviewType === 'standard' ? (
+                   <p className="text-sm text-gray-500 bg-gray-50 border rounded-lg p-3">
+                     Standard Apply selected — screening questions are optional and are typically used with Live Interview or Video Assessment.
+                   </p>
+                 ) : null}
+
                  <div className="space-y-3">
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                       <Input placeholder="Question 1 (e.g. Tell us about yourself)" className="flex-1" />
-                       <Select defaultValue="1min">
-                          <SelectTrigger className="w-full sm:w-[120px]">
-                             <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                             <SelectItem value="1min">1 min</SelectItem>
-                             <SelectItem value="2min">2 min</SelectItem>
-                          </SelectContent>
-                       </Select>
-                       <Button variant="ghost" size="icon" className="self-end sm:self-auto text-red-500 hover:bg-red-50">×</Button>
-                    </div>
+                    {screeningQuestions.map((question, index) => (
+                      <div key={question.id} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                         <Input
+                           placeholder={`Question ${index + 1} (e.g. Tell us about yourself)`}
+                           className="flex-1"
+                           value={question.prompt}
+                           onChange={(e) => updateScreeningQuestion(question.id, { prompt: e.target.value })}
+                         />
+                         <Select
+                           value={question.duration}
+                           onValueChange={(v: ScreeningQuestion['duration']) => updateScreeningQuestion(question.id, { duration: v })}
+                         >
+                            <SelectTrigger className="w-full sm:w-[130px]">
+                               <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                               <SelectItem value="1min">1 min</SelectItem>
+                               <SelectItem value="2min">2 min</SelectItem>
+                               <SelectItem value="3min">3 min</SelectItem>
+                            </SelectContent>
+                         </Select>
+                         <Button
+                           type="button"
+                           variant="ghost"
+                           size="icon"
+                           onClick={() => removeScreeningQuestion(question.id)}
+                           disabled={screeningQuestions.length === 1}
+                           className="self-end sm:self-auto text-red-500 hover:bg-red-50 disabled:text-gray-300"
+                         >
+                           ×
+                         </Button>
+                      </div>
+                    ))}
                  </div>
-                 <Button variant="outline" className="border-dashed border-gray-300 text-gray-500 hover:text-[#00C853] hover:border-[#00C853]">
+                 <Button
+                   type="button"
+                   variant="outline"
+                   onClick={addScreeningQuestion}
+                   className="border-dashed border-gray-300 text-gray-500 hover:text-[#00C853] hover:border-[#00C853]"
+                 >
                     + Add Question
                  </Button>
               </div>

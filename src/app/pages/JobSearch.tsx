@@ -224,6 +224,19 @@ export default function JobSearch() {
             ) : (
               <div className="space-y-4">
                 {jobs.map((job) => (
+                  (() => {
+                    const companyName = String(job?.employer?.name || job?.company || 'Hiring Company').trim();
+                    const companyLogo = String(job?.employer?.avatar_url || '').trim();
+                    const jobLocationLabel = String(job?.location || [job?.city, job?.province].filter(Boolean).join(', ') || 'South Africa').trim();
+                    const employmentTypeLabel = String(job?.employment_type || job?.jobType || 'Full-time').trim();
+                    const postedAtRaw = job?.created_at || job?.createdAt;
+                    const postedAtDate = postedAtRaw ? new Date(postedAtRaw) : null;
+                    const postedAtLabel = postedAtDate && !Number.isNaN(postedAtDate.getTime())
+                      ? postedAtDate.toLocaleDateString()
+                      : 'Recently';
+                    const companyInitial = (companyName.charAt(0) || 'C').toUpperCase();
+
+                    return (
                   <div
                     key={job.id}
                     className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] hover:shadow-lg transition-shadow p-6 relative"
@@ -244,8 +257,14 @@ export default function JobSearch() {
                     </button>
 
                     <div className="flex items-start space-x-4 mb-4">
-                      <div className="w-16 h-16 bg-gray-100 rounded-[var(--rf-radius-md)] flex items-center justify-center flex-shrink-0">
-                        <Building2 className="w-8 h-8 text-[var(--rf-muted)]" />
+                      <div className="w-16 h-16 bg-gray-100 rounded-[var(--rf-radius-md)] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {companyLogo ? (
+                          <img src={companyLogo} alt={`${companyName} logo`} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl font-bold text-[var(--rf-navy)]">
+                            {companyInitial}
+                          </div>
+                        )}
                       </div>
                       
                       <div className="flex-1">
@@ -255,13 +274,13 @@ export default function JobSearch() {
                           </h3>
                         </Link>
                         <div className="flex items-center space-x-2 text-[var(--rf-muted)] mb-2">
-                          <span>{job.company || 'Company Name'}</span>
+                          <span>{companyName}</span>
                           <CheckCircle className="w-4 h-4 text-[var(--rf-green)]" />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <span className="flex items-center text-sm text-[var(--rf-muted)]">
                             <MapPin className="w-4 h-4 mr-1" />
-                            {job.location}
+                            {jobLocationLabel}
                           </span>
                           {job.salaryMin && job.salaryMax && (
                             <span className="flex items-center text-sm text-[var(--rf-muted)]">
@@ -270,7 +289,7 @@ export default function JobSearch() {
                             </span>
                           )}
                           <span className="px-3 py-1 bg-gray-100 text-[var(--rf-text)] rounded-[var(--rf-radius-pill)] text-xs font-medium">
-                            {job.jobType || 'Full-time'}
+                            {employmentTypeLabel}
                           </span>
                         </div>
                       </div>
@@ -282,7 +301,7 @@ export default function JobSearch() {
 
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-[var(--rf-muted)]">
-                        Posted {new Date(job.createdAt).toLocaleDateString()}
+                        Posted {postedAtLabel}
                       </span>
                       <div className="flex space-x-2">
                         <Link
@@ -300,6 +319,8 @@ export default function JobSearch() {
                       </div>
                     </div>
                   </div>
+                    );
+                  })()
                 ))}
               </div>
             )}

@@ -266,96 +266,8 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     }
     return { activeListings, totalApplications, shortlisted, interviewsToday: 0, cvViews: 0 };
   }
-  if (method === 'GET' && normalizedEndpoint === '/jobs') {
-    const page = Math.max(1, parseInt(new URLSearchParams(endpoint.split('?')[1]).get('page') || '1'));
-    const limit = Math.min(100, Math.max(1, parseInt(new URLSearchParams(endpoint.split('?')[1]).get('limit') || '20')));
-    const offset = (page - 1) * limit;
-    const search = new URLSearchParams(endpoint.split('?')[1]).get('search');
-    const location = new URLSearchParams(endpoint.split('?')[1]).get('location');
-    const jobType = new URLSearchParams(endpoint.split('?')[1]).get('jobType');
-    const minSalary = new URLSearchParams(endpoint.split('?')[1]).get('minSalary');
-    const maxSalary = new URLSearchParams(endpoint.split('?')[1]).get('maxSalary');
-    const industry = new URLSearchParams(endpoint.split('?')[1]).get('industry');
-
-    let query = supabase
-      .from('jobs')
-      .select('*', { count: 'exact' })
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
-    }
-    if (location) {
-      query = query.or(`city.ilike.%${location}%,province.ilike.%${location}%`);
-    }
-    if (jobType) {
-      query = query.eq('employment_type', jobType);
-    }
-    if (industry) {
-      query = query.eq('industry', industry);
-    }
-    if (minSalary) {
-      query = query.gte('salary_max', parseInt(minSalary));
-    }
-    if (maxSalary) {
-      query = query.lte('salary_min', parseInt(maxSalary));
-    }
-
-    const { data: jobs, error, count } = await query;
-    if (error) throw new Error(error.message);
-
-    // Fetch employer profiles separately to avoid FK relationship issues
-    if (jobs && jobs.length > 0) {
-      const employerIds = [...new Set((jobs as Record<string, unknown>[]).map(j => (j as any).employer_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name, avatar_url')
-        .in('id', employerIds);
-
-      const profileMap: Record<string, Record<string, unknown>> = {};
-      (profiles || []).forEach((p: Record<string, unknown>) => {
-        profileMap[p.id as string] = p;
-      });
-
-      const enriched = (jobs as Record<string, unknown>[]).map((j: any) => ({
-        ...j,
-        employer: profileMap[j.employer_id] || null,
-      }));
-
-      return { jobs: enriched, count: jobs.length || 0, totalCount: count || 0 };
-    }
-
-    return { jobs: jobs || [], count: jobs?.length || 0, totalCount: count || 0 };
-  }
-  if (method === 'GET' && /^\/jobs\/[^/]+$/.test(normalizedEndpoint)) {
-    const jobId = normalizedEndpoint.split('/').pop();
-    if (!jobId) throw new Error('jobId is required');
-
-    const { data: job, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('id', jobId)
-      .eq('status', 'active')
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    if (!job) throw new Error('Job not found');
-
-    // Fetch employer profile
-    const { data: employer } = await supabase
-      .from('profiles')
-      .select('id, name, avatar_url, location')
-      .eq('id', (job as any).employer_id)
-      .maybeSingle();
-
-    // Increment views
-    const currentViews = (job as any).views || 0;
-    await supabase.from('jobs').update({ views: currentViews + 1 }).eq('id', jobId).maybeSingle();
-
-    return { job: { ...job, employer: employer || null } };
-  }
+  // NOTE: Public /jobs and /jobs/:id are intentionally served by the edge endpoint
+  // so employer identity (name/logo/profile fields) remains consistent.
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/jobs')) {
     await assertApprovedEmployer(effectiveUser.id);
     const { data: jobs } = await supabase.from('jobs').select('*').eq('employer_id', effectiveUser.id).order('created_at', { ascending: false });
@@ -875,6 +787,16 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     await assertApprovedEmployer(effectiveUser.id);
     const title = String(requestBody.title || '').trim();
     if (!title) throw new Error('Job title is required');
+    const screeningQuestions = Array.isArray(requestBody.screening_questions)
+      ? (requestBody.screening_questions as Array<Record<string, unknown>>)
+          .map((question, index) => ({
+            id: String(question.id ?? index),
+            prompt: String(question.prompt || '').trim(),
+            duration: String(question.duration || '1min').trim(),
+          }))
+          .filter((question) => question.prompt.length > 0)
+      : [];
+
     const { data, error } = await supabase
       .from('jobs')
       .insert({
@@ -892,6 +814,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
         requirements: Array.isArray(requestBody.requirements) ? requestBody.requirements : [],
         benefits: Array.isArray(requestBody.benefits) ? requestBody.benefits : [],
         interview_type: requestBody.interview_type || null,
+        screening_questions: screeningQuestions,
         status: 'active',
       })
       .select()
@@ -952,6 +875,17 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   if (effectiveUser && method === 'POST' && endpoint.includes('/applications')) {
     const jobId = String(requestBody.jobId || requestBody.job_id || '').trim();
     if (!jobId) throw new Error('jobId is required');
+    const screeningAnswerInput = requestBody.screeningAnswers ?? requestBody.screening_answers;
+    const screeningAnswers = Array.isArray(screeningAnswerInput)
+      ? (screeningAnswerInput as Array<Record<string, unknown>>)
+          .map((entry, index) => ({
+            question_id: String(entry.question_id ?? entry.id ?? index),
+            question: String(entry.question || entry.prompt || '').trim(),
+            answer: String(entry.answer || '').trim(),
+            duration: String(entry.duration || '').trim() || null,
+          }))
+          .filter((entry) => entry.question.length > 0 || entry.answer.length > 0)
+      : [];
 
     const { data, error } = await supabase
       .from('applications')
@@ -960,6 +894,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
         seeker_id: effectiveUser.id,
         cover_letter: (requestBody.coverLetter as string | undefined) || (requestBody.cover_letter as string | undefined) || '',
         custom_letter: Boolean(requestBody.customLetter ?? requestBody.custom_letter),
+        screening_answers: screeningAnswers,
         status: 'applied',
       })
       .select()

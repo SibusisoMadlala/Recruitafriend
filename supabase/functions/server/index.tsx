@@ -1177,7 +1177,7 @@ app.get('/make-server-bca21fd3/jobs', async (c) => {
     const db = getDb();
     let query = db
       .from('jobs')
-      .select('*, employer:profiles!jobs_employer_id_fkey(id, name, avatar_url)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -1204,7 +1204,32 @@ app.get('/make-server-bca21fd3/jobs', async (c) => {
     const { data: jobs, error, count } = await query;
     if (error) throw error;
 
-    return c.json({ jobs: jobs || [], count: jobs?.length || 0, totalCount: count || 0 });
+    const rows = jobs || [];
+    const employerIds = [...new Set(rows.map((job: Record<string, unknown>) => String(job.employer_id || '')).filter(Boolean))];
+
+    let employerMap: Record<string, Record<string, unknown>> = {};
+    if (employerIds.length > 0) {
+      const { data: employerProfiles, error: employerError } = await db
+        .from('profiles')
+        .select('id, name, avatar_url, location, headline, summary, social_links')
+        .in('id', employerIds);
+
+      if (employerError) {
+        console.error('Get jobs employer profile join fallback error:', employerError);
+      } else {
+        employerMap = (employerProfiles || []).reduce((acc: Record<string, Record<string, unknown>>, profile: Record<string, unknown>) => {
+          acc[String(profile.id)] = profile;
+          return acc;
+        }, {});
+      }
+    }
+
+    const enriched = rows.map((job: Record<string, unknown>) => ({
+      ...job,
+      employer: employerMap[String(job.employer_id || '')] || null,
+    }));
+
+    return c.json({ jobs: enriched, count: enriched.length, totalCount: count || 0 });
   } catch (error) {
     console.error('Get jobs error:', error);
     return c.json({ error: 'Failed to get jobs' }, 500);
@@ -1219,16 +1244,31 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
 
     const { data: job, error } = await db
       .from('jobs')
-      .select('*, employer:profiles!jobs_employer_id_fkey(id, name, avatar_url, location)')
+      .select('*')
       .eq('id', id)
       .single();
 
     if (error || !job) return c.json({ error: 'Job not found' }, 404);
 
+    let employer: Record<string, unknown> | null = null;
+    if (job.employer_id) {
+      const { data: employerProfile, error: employerError } = await db
+        .from('profiles')
+        .select('id, name, avatar_url, location, headline, summary, social_links')
+        .eq('id', job.employer_id)
+        .maybeSingle();
+
+      if (employerError) {
+        console.error('Get job employer profile error:', employerError);
+      } else {
+        employer = (employerProfile as Record<string, unknown> | null) || null;
+      }
+    }
+
     // Increment views
     await db.from('jobs').update({ views: (job.views || 0) + 1 }).eq('id', id);
 
-    return c.json({ job });
+    return c.json({ job: { ...job, employer } });
   } catch (error) {
     console.error('Get job error:', error);
     return c.json({ error: 'Failed to get job' }, 500);
@@ -1248,9 +1288,25 @@ app.post('/make-server-bca21fd3/jobs', async (c) => {
 
     const db = getDb();
     const jobData = await c.req.json();
+    const screeningQuestions = Array.isArray(jobData?.screening_questions)
+      ? (jobData.screening_questions as Array<Record<string, unknown>>)
+          .map((question, index) => ({
+            id: String(question?.id ?? index),
+            prompt: String(question?.prompt || '').trim(),
+            duration: String(question?.duration || '1min').trim(),
+          }))
+          .filter((question) => question.prompt.length > 0)
+      : [];
+
     const { data: job, error } = await db
       .from('jobs')
-      .insert({ ...jobData, employer_id: auth.user.id, status: 'active', views: 0 })
+      .insert({
+        ...jobData,
+        screening_questions: screeningQuestions,
+        employer_id: auth.user.id,
+        status: 'active',
+        views: 0,
+      })
       .select()
       .single();
 
@@ -1385,12 +1441,29 @@ app.post('/make-server-bca21fd3/applications', async (c) => {
     const user = await getAuthUser(c.req.header('Authorization'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
-    const { jobId, coverLetter, customLetter } = await c.req.json();
+    const { jobId, coverLetter, customLetter, screeningAnswers } = await c.req.json();
     const db = getDb();
+    const normalizedScreeningAnswers = Array.isArray(screeningAnswers)
+      ? (screeningAnswers as Array<Record<string, unknown>>)
+          .map((entry, index) => ({
+            question_id: String(entry?.question_id ?? entry?.id ?? index),
+            question: String(entry?.question || entry?.prompt || '').trim(),
+            answer: String(entry?.answer || '').trim(),
+            duration: String(entry?.duration || '').trim() || null,
+          }))
+          .filter((entry) => entry.question.length > 0 || entry.answer.length > 0)
+      : [];
 
     const { data: application, error } = await db
       .from('applications')
-      .insert({ job_id: jobId, seeker_id: user.id, cover_letter: coverLetter, custom_letter: customLetter, status: 'applied' })
+      .insert({
+        job_id: jobId,
+        seeker_id: user.id,
+        cover_letter: coverLetter,
+        custom_letter: customLetter,
+        screening_answers: normalizedScreeningAnswers,
+        status: 'applied',
+      })
       .select()
       .single();
 
@@ -1672,9 +1745,23 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
 
     if (error) throw error;
 
-    if (isEmployer && status === 'interview') {
+    const previousStatus = String(appRecord.status || '').trim().toLowerCase();
+    const nextStatus = String(status || '').trim().toLowerCase();
+    const stageChanged = previousStatus !== nextStatus;
+
+    let emailSent = false;
+
+    if (isEmployer && stageChanged) {
       try {
         const interviewMeta = parseInterviewNotes(notes);
+        const statusLabels: Record<string, string> = {
+          applied: 'Applied',
+          viewed: 'Reviewed',
+          shortlisted: 'Shortlisted',
+          interview: 'Interview',
+          offer: 'Offer',
+          rejected: 'Rejected',
+        };
 
         const [{ data: seekerProfile }, { data: jobProfile }, { data: employerProfile }] = await Promise.all([
           db.from('profiles').select('id, name, email').eq('id', appRecord.seeker_id).maybeSingle(),
@@ -1682,38 +1769,84 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
           db.from('profiles').select('id, name').eq('id', user.id).maybeSingle(),
         ]);
 
-        const seekerEmail = String(seekerProfile?.email || '').trim().toLowerCase();
-        if (/^\S+@\S+\.\S+$/.test(seekerEmail)) {
-          const { notifications, templates } = await resolveEmployerSettings(db, user.id);
-          const interviewTemplate = String(
-            templates.interviewInvite ||
-            'Hi {{candidate_name}}, we would like to invite you to interview for {{job_title}} at {{company_name}}. Scheduled time: {{scheduled_at}}. Join link: {{meeting_link}}'
-          );
+        let seekerEmail = String(seekerProfile?.email || '').trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(seekerEmail)) {
+          try {
+            const { data: authUserData, error: authUserError } = await db.auth.admin.getUserById(appRecord.seeker_id);
+            if (authUserError) {
+              console.error('Failed to resolve seeker email from auth user:', authUserError);
+            }
+            seekerEmail = String(authUserData?.user?.email || '').trim().toLowerCase();
+          } catch (authLookupError) {
+            console.error('Auth user email lookup failed for seeker notification:', authLookupError);
+          }
+        }
 
-          await dispatchProductEmail(db, {
-            eventType: 'employer.interview_invite',
-            eventKey: `interview:${application.id}:${application.updated_at || new Date().toISOString()}`,
-            recipientEmail: seekerEmail,
-            subject: `Interview invitation for ${String(jobProfile?.title || 'your application')}`,
-            templateKey: 'interview_invite',
-            category: 'employer_communications',
-            template: interviewTemplate,
-            templateVars: {
-              candidate_name: String(seekerProfile?.name || 'Candidate'),
-              job_title: String(jobProfile?.title || 'the role'),
-              company_name: String(employerProfile?.name || 'RecruitFriend employer'),
-              scheduled_at: String(interviewMeta?.scheduled_at || 'TBD'),
-              meeting_link: String(interviewMeta?.link || 'Will be shared separately'),
-            },
-            preferenceAllowed: async () => Boolean(notifications.interviewReminders ?? true),
+        if (/^\S+@\S+\.\S+$/.test(seekerEmail)) {
+          const { templates } = await resolveEmployerSettings(db, user.id);
+
+          if (nextStatus === 'interview') {
+            const interviewTemplate = String(
+              templates.interviewInvite ||
+              'Hi {{candidate_name}}, we would like to invite you to interview for {{job_title}} at {{company_name}}. Scheduled time: {{scheduled_at}}. Join link: {{meeting_link}}'
+            );
+
+            await dispatchProductEmail(db, {
+              eventType: 'employer.interview_invite',
+              eventKey: `interview:${application.id}:${application.updated_at || new Date().toISOString()}`,
+              recipientEmail: seekerEmail,
+              subject: `Interview invitation for ${String(jobProfile?.title || 'your application')}`,
+              templateKey: 'interview_invite',
+              category: 'employer_communications',
+              template: interviewTemplate,
+              templateVars: {
+                candidate_name: String(seekerProfile?.name || 'Candidate'),
+                job_title: String(jobProfile?.title || 'the role'),
+                company_name: String(employerProfile?.name || 'RecruitFriend employer'),
+                scheduled_at: String(interviewMeta?.scheduled_at || 'TBD'),
+                meeting_link: String(interviewMeta?.link || 'Will be shared separately'),
+              },
+            });
+            emailSent = true;
+          } else {
+            const stageTemplate = nextStatus === 'rejected'
+              ? String(
+                templates.rejectionNote ||
+                'Hi {{candidate_name}}, thank you for your interest in {{job_title}} at {{company_name}}. We are moving forward with other applicants at this stage.'
+              )
+              : 'Hi {{candidate_name}}, your application for {{job_title}} at {{company_name}} has moved from {{from_stage}} to {{to_stage}}. We will contact you with next steps if needed.';
+
+            await dispatchProductEmail(db, {
+              eventType: 'employer.application_stage_update',
+              eventKey: `application-stage:${application.id}:${application.updated_at || new Date().toISOString()}:${nextStatus}`,
+              recipientEmail: seekerEmail,
+              subject: `Update on your application for ${String(jobProfile?.title || 'this role')}`,
+              templateKey: nextStatus === 'rejected' ? 'application_rejection' : 'application_stage_update',
+              category: 'employer_communications',
+              template: stageTemplate,
+              templateVars: {
+                candidate_name: String(seekerProfile?.name || 'Candidate'),
+                job_title: String(jobProfile?.title || 'the role'),
+                company_name: String(employerProfile?.name || 'RecruitFriend employer'),
+                from_stage: statusLabels[previousStatus] || previousStatus || 'Previous stage',
+                to_stage: statusLabels[nextStatus] || nextStatus || 'Next stage',
+              },
+            });
+            emailSent = true;
+          }
+        } else {
+          console.warn('Skipping application status email due to missing recipient email', {
+            applicationId: application.id,
+            seekerId: appRecord.seeker_id,
+            nextStatus,
           });
         }
       } catch (inviteError) {
-        console.error('Interview invite email dispatch failed:', inviteError);
+        console.error('Application status email dispatch failed:', inviteError);
       }
     }
 
-    return c.json({ application });
+    return c.json({ application, emailSent });
   } catch (error) {
     console.error('Update application error:', error);
     return c.json({ error: 'Failed to update application' }, 500);
@@ -2311,10 +2444,11 @@ app.post('/make-server-bca21fd3/email/team-invites/send', async (c) => {
     }
 
     const db = getDb();
-    const [{ notifications }, { data: employerProfile }] = await Promise.all([
-      resolveEmployerSettings(db, auth.user.id),
-      db.from('profiles').select('name').eq('id', auth.user.id).maybeSingle(),
-    ]);
+    const { data: employerProfile } = await db
+      .from('profiles')
+      .select('name')
+      .eq('id', auth.user.id)
+      .maybeSingle();
 
     let sent = 0;
     let failed = 0;
@@ -2323,7 +2457,7 @@ app.post('/make-server-bca21fd3/email/team-invites/send', async (c) => {
       try {
         const result = await dispatchProductEmail(db, {
           eventType: 'employer.team_invite',
-          eventKey: `team-invite:${auth.user.id}:${email}`,
+          eventKey: `team-invite:${auth.user.id}:${email}:${new Date().toISOString()}`,
           recipientEmail: email,
           subject: `${String(employerProfile?.name || 'RecruitFriend employer')} invited you to collaborate`,
           templateKey: 'team_invite',
@@ -2333,7 +2467,6 @@ app.post('/make-server-bca21fd3/email/team-invites/send', async (c) => {
             candidate_name: email.split('@')[0],
             company_name: String(employerProfile?.name || 'RecruitFriend employer'),
           },
-          preferenceAllowed: async () => Boolean(notifications.productUpdates ?? true),
         });
 
         if (result.status === 'sent' || result.status === 'deduplicated') {
