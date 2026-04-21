@@ -37,7 +37,7 @@ export default function SeekerSavedJobs() {
   async function handleRemove(jobId: string) {
     setWorkingJobId(jobId);
     try {
-      await apiCall(`/saved-jobs/${jobId}`, { method: 'DELETE' });
+      await apiCall(`/saved-jobs/${jobId}`, { method: 'DELETE', requireAuth: true });
       setJobs((prev) => prev.filter((j) => j.id !== jobId));
       toast.success('Removed from saved jobs');
     } catch (error: any) {
@@ -51,6 +51,7 @@ export default function SeekerSavedJobs() {
     setWorkingJobId(jobId);
     try {
       await apiCall('/applications', {
+        requireAuth: true,
         method: 'POST',
         body: JSON.stringify({ jobId }),
       });

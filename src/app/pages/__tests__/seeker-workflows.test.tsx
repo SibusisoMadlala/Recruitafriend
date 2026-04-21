@@ -43,7 +43,7 @@ const apiCallMock = vi.fn(async (endpoint: string, options?: RequestInit) => {
   }
 
   if (endpoint === '/applications' && options?.method === 'POST') {
-    return { application: { id: 'app-2' } };
+    return { application: { id: 'app-2' }, emailDelivery: { employer: 'sent', seeker: 'sent' } };
   }
 
   if (endpoint === '/saved-jobs/job-1' && options?.method === 'DELETE') {
@@ -51,7 +51,7 @@ const apiCallMock = vi.fn(async (endpoint: string, options?: RequestInit) => {
   }
 
   if (endpoint === '/applications/app-1' && options?.method === 'PUT') {
-    return { application: { id: 'app-1', status: 'rejected' } };
+    return { application: { id: 'app-1', status: 'rejected' }, emailDelivery: { employer: 'sent' } };
   }
 
   if (endpoint === '/subscriptions/change') {

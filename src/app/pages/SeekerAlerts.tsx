@@ -35,7 +35,7 @@ export default function SeekerAlerts() {
   async function loadAlerts() {
     setLoading(true);
     try {
-      const { alerts: rows } = await apiCall('/alerts');
+      const { alerts: rows } = await apiCall('/alerts', { requireAuth: true });
       setAlerts(rows || []);
     } catch (error: any) {
       toast.error(error.message || 'Failed to load alerts');
@@ -51,6 +51,7 @@ export default function SeekerAlerts() {
     }
     try {
       const { alert } = await apiCall('/alerts', {
+        requireAuth: true,
         method: 'POST',
         body: JSON.stringify({
           keywords: form.keywords,
@@ -85,6 +86,7 @@ export default function SeekerAlerts() {
       if (patch.types !== undefined) payload.types = patch.types;
 
       const { alert } = await apiCall(`/alerts/${id}`, {
+        requireAuth: true,
         method: 'PUT',
         body: JSON.stringify(payload),
       });
@@ -106,7 +108,7 @@ export default function SeekerAlerts() {
   async function deleteAlert(id: string) {
     setWorkingId(id);
     try {
-      await apiCall(`/alerts/${id}`, { method: 'DELETE' });
+      await apiCall(`/alerts/${id}`, { method: 'DELETE', requireAuth: true });
       setAlerts((prev) => prev.filter((a) => a.id !== id));
       toast.success('Alert deleted');
     } catch (error: any) {

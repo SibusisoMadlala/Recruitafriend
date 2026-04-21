@@ -148,6 +148,9 @@ export interface CVFile {
   seeker_id: string;
   file_name: string;
   file_size: number;
+  storage_bucket?: string | null;
+  storage_path?: string | null;
+  mime_type?: string | null;
   created_at: string;
   updated_at: string;
 }

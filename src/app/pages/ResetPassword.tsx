@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { supabase } from '../lib/supabase';
+import { supabase, isSessionNotFoundError } from '../lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Lock, AlertCircle } from 'lucide-react';
 
@@ -9,14 +9,65 @@ export default function ResetPassword() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingToken, setCheckingToken] = useState(true);
   const [tokenError, setTokenError] = useState(false);
 
   useEffect(() => {
-    // Supabase appends the recovery token in the URL hash after the redirect
-    const hash = window.location.hash;
-    if (!hash || !hash.includes('access_token')) {
-      setTokenError(true);
-    }
+    let isMounted = true;
+
+    const hasRecoveryContextInUrl = () => {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      const combined = `${search}${hash}`;
+
+      return combined.includes('access_token=') || combined.includes('type=recovery');
+    };
+
+    const validateRecoveryContext = async () => {
+      try {
+        if (hasRecoveryContextInUrl()) {
+          if (isMounted) {
+            setTokenError(false);
+            setCheckingToken(false);
+          }
+          return;
+        }
+
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        if (isSessionNotFoundError(error)) {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          setTokenError(true);
+          return;
+        }
+
+        setTokenError(!session?.access_token);
+      } catch {
+        if (isMounted) {
+          setTokenError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingToken(false);
+        }
+      }
+    };
+
+    void validateRecoveryContext();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        setTokenError(!session?.access_token);
+        setCheckingToken(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +95,19 @@ export default function ResetPassword() {
       setLoading(false);
     }
   };
+
+  if (checkingToken) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center bg-[var(--rf-bg)] py-12 px-4">
+        <div className="max-w-md w-full">
+          <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-8 text-center space-y-4">
+            <Loader2 className="w-8 h-8 mx-auto animate-spin text-[var(--rf-green)]" />
+            <p className="text-[var(--rf-muted)]">Validating reset link...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (tokenError) {
     return (

@@ -67,7 +67,7 @@ export default function JobSearch() {
   const toggleSaveJob = async (jobId: string) => {
     try {
       if (savedJobs.has(jobId)) {
-        await apiCall(`/saved-jobs/${jobId}`, { method: 'DELETE' });
+        await apiCall(`/saved-jobs/${jobId}`, { method: 'DELETE', requireAuth: true });
         setSavedJobs(prev => {
           const newSet = new Set(prev);
           newSet.delete(jobId);
@@ -76,6 +76,7 @@ export default function JobSearch() {
         toast.success('Job removed from saved');
       } else {
         await apiCall('/saved-jobs', {
+          requireAuth: true,
           method: 'POST',
           body: JSON.stringify({ jobId }),
         });

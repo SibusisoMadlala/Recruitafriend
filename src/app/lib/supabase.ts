@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { requestTalentSearchFromService } from '../services/talentSearchService';
 
 const supabaseUrl = `https://${projectId}.supabase.co`;
 
@@ -61,6 +62,7 @@ export const serverUrl = `${supabaseUrl}/functions/v1/make-server-bca21fd3`;
 type ApiCallOptions = RequestInit & {
   requireAuth?: boolean;
   accessTokenOverride?: string;
+  bypassInterceptors?: boolean;
 };
 
 const EMPLOYER_STATUS_VALUES = ['pending_review', 'needs_info', 'approved', 'rejected', 'suspended'] as const;
@@ -159,6 +161,7 @@ function isPublicEndpoint(endpoint: string, method: string) {
 
   // Registration does not require a user session — allow it through without a JWT.
   if (normalizedMethod === 'POST' && path === '/auth/signup') return true;
+  if (normalizedMethod === 'POST' && path === '/auth/recover-password') return true;
 
   if (normalizedMethod !== 'GET') return false;
 
@@ -170,6 +173,21 @@ function isLikelyJwt(token: string | undefined | null) {
   const parts = token.split('.');
   const jwtPart = /^[A-Za-z0-9_=-]+$/;
   return parts.length === 3 && parts.every((p) => p.length > 0 && jwtPart.test(p));
+}
+
+export function isSessionNotFoundError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const maybeError = error as { code?: string; message?: string };
+  const code = String(maybeError.code || '').toLowerCase();
+  const message = String(maybeError.message || '');
+  return (
+    code === 'session_not_found' ||
+    /session from session_id claim in jwt does not exist/i.test(message)
+  );
+}
+
+async function clearLocalAuthSession() {
+  await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
 }
 
 function decodeJwtPayload(token: string) {
@@ -184,6 +202,22 @@ function decodeJwtPayload(token: string) {
     for (let i = 0; i < binString.length; i++) bytes[i] = binString.charCodeAt(i);
     const json = new TextDecoder().decode(bytes);
     return JSON.parse(json) as { exp?: number; iss?: string };
+  } catch {
+    return null;
+  }
+}
+
+function decodeJwtHeader(token: string) {
+  try {
+    const [headerPart] = token.split('.');
+    if (!headerPart) return null;
+    const base64 = headerPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const binString = atob(padded);
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) bytes[i] = binString.charCodeAt(i);
+    const json = new TextDecoder().decode(bytes);
+    return JSON.parse(json) as { alg?: string; typ?: string };
   } catch {
     return null;
   }
@@ -223,18 +257,37 @@ async function parseErrorResponse(response: Response) {
 
 // API helper
 export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
-  const { requireAuth = false, accessTokenOverride, ...requestOptions } = options;
-  const { data: { session } } = await supabase.auth.getSession();
+  const { requireAuth = false, accessTokenOverride, bypassInterceptors = false, ...requestOptions } = options;
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (isSessionNotFoundError(sessionError)) {
+    await clearLocalAuthSession();
+    throw new Error('Session expired. Please sign in again.');
+  }
   let token = accessTokenOverride ?? session?.access_token;
   const method = (requestOptions.method || 'GET').toString().toUpperCase();
   const normalizedEndpoint = getEndpointPath(endpoint);
+  const tokenAlg = token && isLikelyJwt(token)
+    ? String(decodeJwtHeader(token)?.alg || '').toUpperCase()
+    : '';
+  const prefersDelegatedEs256 = tokenAlg === 'ES256';
+
+  // Client-side table interceptors can fail in some environments when ES256 JWTs are
+  // rejected by the auth gateway for direct PostgREST calls. Route through Edge API
+  // with delegated auth in those cases.
+  if (prefersDelegatedEs256 && !bypassInterceptors) {
+    return apiCall(endpoint, { ...options, bypassInterceptors: true });
+  }
 
   // Resolve effective user for interceptors.
   // During auth transition just after signIn, session may briefly be null
   // while accessTokenOverride carries the fresh token — derive user from it.
   let effectiveUser = session?.user ?? null;
   if (!effectiveUser && token && isLikelyJwt(token)) {
-    const { data: { user: tokenUser } } = await supabase.auth.getUser(token);
+    const { data: { user: tokenUser }, error: tokenUserError } = await supabase.auth.getUser(token);
+    if (isSessionNotFoundError(tokenUserError)) {
+      await clearLocalAuthSession();
+      throw new Error('Session expired. Please sign in again.');
+    }
     effectiveUser = tokenUser;
   }
 
@@ -247,6 +300,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     }
   })();
 
+  if (!bypassInterceptors) {
   // ----- Supabase Edge Function Edge-case Intercepts -----
   // Kong API gateway has issues verifying newly issued ES256 session tokens, throwing "Invalid JWT".
   // To avoid breaking authenticated features, we intercept and run native equivalent queries here.
@@ -284,7 +338,49 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     const enriched = (jobs || []).map((j: Record<string, unknown>) => ({ ...j, apps: appCounts[j.id as string] || 0 }));
     return { jobs: enriched };
   }
-  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/employer/talent-search') {
+  if (method === 'GET' && normalizedEndpoint === '/employer/talent-search') {
+    if (!effectiveUser) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      throw new Error('Not authenticated');
+    }
+
+    // Prefer server endpoint first because it runs with service-role privileges and
+    // is not constrained by client-side RLS visibility policy differences.
+    try {
+      const serverResponse = await requestTalentSearchFromService({
+        serverUrl,
+        endpoint,
+        token,
+        publicAnonKey,
+        requestOptions,
+      });
+
+      if (serverResponse.ok) {
+        return serverResponse.json();
+      }
+
+      const { message, text } = await parseErrorResponse(serverResponse);
+      const authGateFailure = /Invalid JWT|Missing authorization header|UNAUTHORIZED_NO_AUTH_HEADER|UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM|Unsupported JWT algorithm ES256|Unsupported JWT algorithm|unauthorized|not authorized|forbidden/i.test(
+        `${message} ${text}`
+      );
+
+      // For non-auth failures, surface the server error directly.
+      if (!authGateFailure) {
+        throw new Error(message || 'Failed to search candidates');
+      }
+      // Otherwise continue to local fallback query below.
+    } catch (serverError: any) {
+      const msg = String(serverError?.message || '');
+      const knownAuthGateError = /Invalid JWT|Missing authorization header|UNAUTHORIZED_NO_AUTH_HEADER|UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM|Unsupported JWT algorithm ES256|Unsupported JWT algorithm|unauthorized|not authorized|forbidden/i.test(msg);
+      if (!knownAuthGateError) {
+        throw serverError;
+      }
+    }
+
+    // Fallback path for environments where edge auth gateway rejects valid session JWTs.
+    if (!effectiveUser) {
+      throw new Error('Not authenticated');
+    }
     await assertApprovedEmployer(effectiveUser.id);
     const params = new URLSearchParams(endpoint.split('?')[1] || '');
     const search = String(params.get('search') || '').trim().toLowerCase();
@@ -300,10 +396,25 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
         .filter(Boolean)
     );
 
+    let actingUser = effectiveUser;
+    if (!actingUser) {
+      const { data: { user: delegatedUser }, error: delegatedUserError } = await supabase.auth.getUser(
+        token && isLikelyJwt(token) ? token : undefined
+      );
+      if (isSessionNotFoundError(delegatedUserError)) {
+        await clearLocalAuthSession();
+        throw new Error('Session expired. Please sign in again.');
+      }
+      actingUser = delegatedUser;
+    }
+    if (!actingUser) {
+      throw new Error('Not authenticated');
+    }
+
     const { data: callerProfile, error: callerProfileError } = await supabase
       .from('profiles')
       .select('user_type')
-      .eq('id', effectiveUser.id)
+      .eq('id', actingUser.id)
       .maybeSingle();
     if (callerProfileError) throw new Error(callerProfileError.message);
     if (!callerProfile || callerProfile.user_type !== 'employer') {
@@ -384,9 +495,19 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     const filtered = candidates.filter((candidate) => {
       const matchesVideo = !hasVideo || !!candidate.video_introduction;
       const matchesLevel = levelSet.size === 0 || levelSet.has(candidate.experienceLevel);
-      const matchesSkill =
-        !search || candidate.skills.some((skill) => skill.toLowerCase().includes(search));
-      return matchesVideo && matchesLevel && matchesSkill;
+
+      const haystack = [
+        candidate.name,
+        candidate.headline,
+        candidate.summary,
+        candidate.location,
+        ...candidate.skills,
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+
+      const matchesSearch = !search || haystack.includes(search);
+      return matchesVideo && matchesLevel && matchesSearch;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -872,86 +993,8 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     }
     return { success: true };
   }
-  if (effectiveUser && method === 'POST' && endpoint.includes('/applications')) {
-    const jobId = String(requestBody.jobId || requestBody.job_id || '').trim();
-    if (!jobId) throw new Error('jobId is required');
-    const screeningAnswerInput = requestBody.screeningAnswers ?? requestBody.screening_answers;
-    const screeningAnswers = Array.isArray(screeningAnswerInput)
-      ? (screeningAnswerInput as Array<Record<string, unknown>>)
-          .map((entry, index) => ({
-            question_id: String(entry.question_id ?? entry.id ?? index),
-            question: String(entry.question || entry.prompt || '').trim(),
-            answer: String(entry.answer || '').trim(),
-            duration: String(entry.duration || '').trim() || null,
-          }))
-          .filter((entry) => entry.question.length > 0 || entry.answer.length > 0)
-      : [];
-
-    const { data, error } = await supabase
-      .from('applications')
-      .insert({
-        job_id: jobId,
-        seeker_id: effectiveUser.id,
-        cover_letter: (requestBody.coverLetter as string | undefined) || (requestBody.cover_letter as string | undefined) || '',
-        custom_letter: Boolean(requestBody.customLetter ?? requestBody.custom_letter),
-        screening_answers: screeningAnswers,
-        status: 'applied',
-      })
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return { application: data };
-  }
-  if (effectiveUser && method === 'PUT' && /^\/applications\/[^/]+$/.test(normalizedEndpoint)) {
-    const appId = normalizedEndpoint.split('/').pop();
-    if (!appId) throw new Error('Application id is required');
-
-    const requestedStatus = String(requestBody.status || '').trim().toLowerCase();
-    const requestedNotes = requestBody.notes;
-
-    const { data: appRecord, error: appError } = await supabase
-      .from('applications')
-      .select('id, job_id, seeker_id')
-      .eq('id', appId)
-      .maybeSingle();
-
-    if (appError) throw new Error(appError.message);
-    if (!appRecord) throw new Error('Application not found');
-
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .select('employer_id')
-      .eq('id', appRecord.job_id)
-      .maybeSingle();
-
-    if (jobError) throw new Error(jobError.message);
-
-    const isEmployer = !!job && job.employer_id === effectiveUser.id;
-    const isSeekerOwner = appRecord.seeker_id === effectiveUser.id;
-
-    if (!isEmployer && !isSeekerOwner) throw new Error('Not authorized');
-    if (isEmployer) {
-      await assertApprovedEmployer(effectiveUser.id);
-    }
-    if (isSeekerOwner && requestedStatus && requestedStatus !== 'rejected') {
-      throw new Error('Seekers can only withdraw applications');
-    }
-
-    const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (requestedStatus) payload.status = requestedStatus;
-    if (requestedNotes !== undefined) payload.notes = requestedNotes;
-
-    const { data: application, error: updateError } = await supabase
-      .from('applications')
-      .update(payload)
-      .eq('id', appId)
-      .select()
-      .single();
-
-    if (updateError) throw new Error(updateError.message);
-    return { application };
-  }
+  // NOTE: /applications endpoints intentionally route through the Edge Function
+  // so workflow emails, idempotency, and delivery metadata execute server-side.
   if (effectiveUser && method === 'GET' && normalizedEndpoint === '/auth/profile') {
     const fallbackProfile = buildFallbackProfile(effectiveUser);
 
@@ -1051,70 +1094,22 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   if (effectiveUser && method === 'GET' && normalizedEndpoint === '/profile/views') {
     return { views: 0 };
   }
-  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/applications/my') {
-    const { data: applications, error } = await supabase
-      .from('applications')
-      .select('*, job:jobs(id, title, city, province, employment_type)')
-      .eq('seeker_id', effectiveUser.id)
-      .order('created_at', { ascending: false });
+  if (effectiveUser && method === 'POST' && normalizedEndpoint === '/referrals') {
+    const refereeEmailRaw = String(requestBody.referee_email || requestBody.refereeEmail || '').trim().toLowerCase();
+
+    const { data: referral, error } = await supabase
+      .from('referrals')
+      .insert({
+        referrer_id: effectiveUser.id,
+        referee_email: refereeEmailRaw || null,
+        status: 'invited',
+        payout: 0,
+      })
+      .select('*')
+      .single();
 
     if (error) throw new Error(error.message);
-
-    const normalized = (applications || []).map((app: Record<string, unknown>) => {
-      const job = app.job as Record<string, unknown> | null;
-      return { ...app, job_title: job?.title || '', company: '' };
-    });
-
-    return { applications: normalized };
-  }
-  if (effectiveUser && method === 'GET' && /^\/jobs\/[^/]+\/applications$/.test(normalizedEndpoint)) {
-    await assertApprovedEmployer(effectiveUser.id);
-    const jobId = normalizedEndpoint.split('/')[2];
-    if (!jobId) throw new Error('jobId is required');
-
-    // Verify the user owns this job
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .select('employer_id')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (jobError) throw new Error(jobError.message);
-    if (!job || job.employer_id !== effectiveUser.id) {
-      throw new Error('Not authorized to view applications for this job');
-    }
-
-    // Fetch applications for this job
-    const { data: applications, error: appError } = await supabase
-      .from('applications')
-      .select('id, job_id, seeker_id, cover_letter, custom_letter, status, notes, created_at, updated_at')
-      .eq('job_id', jobId)
-      .order('created_at', { ascending: false });
-
-    if (appError) throw new Error(appError.message);
-    if (!applications || applications.length === 0) return { applications: [] };
-
-    // Fetch seeker profiles for all applicants
-    const seekerIds = [...new Set((applications || []).map((a: Record<string, unknown>) => a.seeker_id as string))];
-    const { data: profiles, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, name, email, headline, avatar_url, skills, location, phone, summary, experience, education, social_links')
-      .in('id', seekerIds);
-
-    if (profileError) throw new Error(profileError.message);
-
-    // Build profile map and enrich applications
-    const profileMap: Record<string, Record<string, unknown>> = {};
-    (profiles || []).forEach((p: Record<string, unknown>) => {
-      profileMap[p.id as string] = p;
-    });
-
-    const enriched = (applications || []).map((a: Record<string, unknown>) => ({
-      ...a,
-      seeker: profileMap[a.seeker_id as string] || null,
-    }));
-
-    return { applications: enriched };
+    return { referral };
   }
   if (effectiveUser && method === 'GET' && normalizedEndpoint === '/referrals/my') {
     const { data: referrals, error } = await supabase
@@ -1335,8 +1330,10 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { success: true };
   }
   // -------------------------------------------------------
+  }
 
   const canSkipAuthHeader = !requireAuth && isPublicEndpoint(endpoint, method);
+  const prefersDelegatedJwt = method === 'GET' && /^\/employer\/seeker\/[^/]+\/cv\/latest$/.test(normalizedEndpoint);
 
   if ((requireAuth || (token && token !== publicAnonKey)) && shouldRefreshToken(token)) {
     // Avoid calling .refreshSession() repeatedly on every fast api trigger and respect the gotrue locks.
@@ -1344,13 +1341,13 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     // If it's *still* expired here, it means we are truly out of bounds and have an invalid offline token.
     token = session?.access_token ?? accessTokenOverride;
     if (!token || shouldRefreshToken(token)) {
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      await clearLocalAuthSession();
       throw new Error('Not authenticated');
     }
   }
 
   if (requireAuth && !isLikelyJwt(token)) {
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    await clearLocalAuthSession();
     throw new Error('Not authenticated');
   }
 
@@ -1358,7 +1355,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   // If we don't have a valid user token at this point, fail fast so callers
   // can redirect to login instead of hitting server routes with an invalid JWT.
   if (!canSkipAuthHeader && !isLikelyJwt(token)) {
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    await clearLocalAuthSession();
     throw new Error('Not authenticated');
   }
 
@@ -1370,6 +1367,10 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     };
 
     const activeToken = overrideToken ?? token ?? publicAnonKey;
+    if (isLikelyJwt(activeToken)) {
+      headers['x-rf-user-jwt'] = activeToken;
+    }
+
     if (withAuth && isLikelyJwt(activeToken)) {
       headers.Authorization = `Bearer ${activeToken}`;
     } else {
@@ -1384,22 +1385,35 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     });
   };
 
-  const withAuth = !canSkipAuthHeader && isLikelyJwt(token);
+  const withAuth = !canSkipAuthHeader && isLikelyJwt(token) && !prefersDelegatedJwt && !prefersDelegatedEs256;
   let response = await request(withAuth);
 
   if (!response.ok) {
     const { message, text } = await parseErrorResponse(response);
     const authHeaderMissing = response.status === 401 && /Missing authorization header/i.test(text || message);
-    const invalidJwt = response.status === 401 && /Invalid JWT/i.test(text || message);
-    const shouldRetryAuth = invalidJwt || authHeaderMissing;
+    const invalidJwt = /Invalid JWT/i.test(text || message);
+    const unsupportedJwtAlgorithm = /UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM|Unsupported JWT algorithm ES256|Unsupported JWT algorithm/i.test(text || message);
+    const sessionNotFound = /session_not_found|session from session_id claim in jwt does not exist/i.test(text || message);
+    const shouldRetryAuth = invalidJwt || authHeaderMissing || unsupportedJwtAlgorithm || sessionNotFound;
 
     if (shouldRetryAuth) {
       // Try once with the latest session token in case of token rotation races.
-      const { data: { session: retrySession } } = await supabase.auth.getSession();
+      const { data: { session: retrySession }, error: retrySessionError } = await supabase.auth.getSession();
+      if (isSessionNotFoundError(retrySessionError)) {
+        await clearLocalAuthSession();
+        throw new Error('Session expired. Please sign in again.');
+      }
       const retryToken = retrySession?.access_token;
       if (isLikelyJwt(retryToken)) {
         token = retryToken;
-        response = await request(true, retryToken);
+        const retryTokenAlg = String(decodeJwtHeader(retryToken)?.alg || '').toUpperCase();
+        const retryPrefersDelegatedEs256 = retryTokenAlg === 'ES256';
+        response = await request(!prefersDelegatedJwt && !retryPrefersDelegatedEs256, retryToken);
+        if (response.ok) return response.json();
+
+        // Fallback for gateways that reject ES256 Authorization tokens.
+        // Keep user JWT in x-rf-user-jwt while using anon Authorization header.
+        response = await request(false, retryToken);
         if (response.ok) return response.json();
       }
 
@@ -1409,7 +1423,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
       }
 
       if (!canSkipAuthHeader) {
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        await clearLocalAuthSession();
         throw new Error('Not authenticated');
       }
 

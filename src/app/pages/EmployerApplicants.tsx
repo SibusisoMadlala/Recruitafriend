@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useParams } from 'react-router';
-import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video } from 'lucide-react';
+import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -60,6 +60,7 @@ export default function EmployerApplicants() {
   const [jobsOpen, setJobsOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingCvFile, setLoadingCvFile] = useState(false);
   const [fetchedSeeker, setFetchedSeeker] = useState<Seeker | null>(null);
   const activeApplications = applications.filter((app) => COLUMNS.includes(app.status));
 
@@ -105,15 +106,19 @@ export default function EmployerApplicants() {
 
   async function moveStage(appId: string, status: string) {
     try {
-      const { application, emailSent } = await apiCall(`/applications/${appId}`, {
+      const { application, emailDelivery } = await apiCall(`/applications/${appId}`, {
         requireAuth: true,
         method: 'PUT', body: JSON.stringify({ status }),
       });
       setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: application.status } : a));
       
       const statusLabel = COLUMN_LABELS[status] || status;
-      if (emailSent) {
+      const seekerDelivery = emailDelivery?.seeker;
+      if (seekerDelivery === 'sent' || seekerDelivery === 'deduplicated') {
         toast.success(`Moved to ${statusLabel} • Email sent to candidate`);
+      } else if (seekerDelivery === 'failed') {
+        toast.success(`Moved to ${statusLabel}`);
+        toast.warning('Candidate email notification failed to send');
       } else {
         toast.success(`Moved to ${statusLabel}`);
       }
@@ -142,36 +147,37 @@ export default function EmployerApplicants() {
     }
   }
 
-  function handleViewCv() {
+  async function handleCvAccess(mode: 'view' | 'download') {
     if (!selectedSeeker) {
-      toast.error('No candidate profile available to generate CV preview');
+      toast.error('No candidate profile available');
       return;
     }
 
-    const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const skills = (selectedSeeker.skills || []).map((s) => `<span style="display:inline-block;padding:4px 8px;margin:4px;border-radius:9999px;background:#eef6ff;color:#1d4ed8;font-size:12px;">${esc(s)}</span>`).join('');
-    const exp = (selectedSeeker.experience || []).map((e: any) => `<li><strong>${esc(e?.title || 'Role')}</strong> — ${esc(e?.company || 'Company')}</li>`).join('');
-    const edu = (selectedSeeker.education || []).map((e: any) => `<li><strong>${esc(e?.degree || 'Qualification')}</strong> — ${esc(e?.institution || 'Institution')}</li>`).join('');
+    setLoadingCvFile(true);
+    try {
+      const { signedUrl, cvFile } = await apiCall(`/employer/seeker/${selectedSeeker.id}/cv/latest`, { requireAuth: true });
+      if (!signedUrl) {
+        toast.error('No uploaded CV found for this candidate');
+        return;
+      }
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${esc(selectedSeeker.name || 'Candidate')} CV</title></head>
-      <body style="font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 12px;color:#0A2540;">
-        <h1 style="margin-bottom:4px;">${esc(selectedSeeker.name || 'Candidate')}</h1>
-        <p style="margin-top:0;color:#475569;">${esc(selectedSeeker.headline || '')}</p>
-        <p style="color:#475569;font-size:14px;">${esc(selectedSeeker.email || '')} ${selectedSeeker.phone ? `• ${esc(selectedSeeker.phone)}` : ''} ${selectedSeeker.location ? `• ${esc(selectedSeeker.location)}` : ''}</p>
-        <h3>Professional Summary</h3>
-        <p>${esc(selectedSeeker.summary || 'No professional summary provided.')}</p>
-        <h3>Skills</h3>
-        <div>${skills || '<p>No skills listed.</p>'}</div>
-        <h3>Experience</h3>
-        <ul>${exp || '<li>No experience entries.</li>'}</ul>
-        <h3>Education</h3>
-        <ul>${edu || '<li>No education entries.</li>'}</ul>
-      </body></html>`;
-
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+      if (mode === 'download') {
+        const link = document.createElement('a');
+        link.href = signedUrl;
+        link.download = String(cvFile?.file_name || 'candidate-cv');
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to access candidate CV');
+    } finally {
+      setLoadingCvFile(false);
+    }
   }
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
@@ -426,14 +432,25 @@ export default function EmployerApplicants() {
           {selectedApplication && (
             <div className="space-y-6">
               <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={handleViewCv}
-                  disabled={loadingProfile}
-                  className="text-xs border border-gray-200 rounded px-3 py-1.5 text-[#0A2540] hover:bg-gray-50 disabled:opacity-60"
-                >
-                  View CV
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleCvAccess('view')}
+                    disabled={loadingProfile || loadingCvFile}
+                    className="text-xs border border-gray-200 rounded px-3 py-1.5 text-[#0A2540] hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    View CV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCvAccess('download')}
+                    disabled={loadingProfile || loadingCvFile}
+                    className="inline-flex items-center gap-1 text-xs border border-gray-200 rounded px-3 py-1.5 text-[#0A2540] hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download CV
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-4">

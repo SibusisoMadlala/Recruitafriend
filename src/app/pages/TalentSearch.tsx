@@ -87,7 +87,7 @@ export default function TalentSearch() {
 
     useEffect(() => {
        void fetchCandidates();
-    }, [fetchCandidates]);
+    }, []);
 
     const activeFiltersCount = useMemo(() => {
        return [
@@ -165,7 +165,7 @@ export default function TalentSearch() {
                     <label className="text-sm font-medium text-gray-700">Experience Level</label>
                     <div className="space-y-2">
                        {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
-                          <div key={level} className="flex items-center space-x-2">
+                          <div key={level.value} className="flex items-center space-x-2">
                              <Checkbox
                                id={level.value}
                                checked={selectedLevels.includes(level.value)}

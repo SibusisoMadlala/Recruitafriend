@@ -15,6 +15,8 @@ export default function JobDetail() {
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [togglingSave, setTogglingSave] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [coverLetter, setCoverLetter] = useState('');
   const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
@@ -38,6 +40,15 @@ export default function JobDetail() {
     loadJob();
   }, [id]);
 
+  useEffect(() => {
+    if (!id || !user) {
+      setIsSaved(false);
+      return;
+    }
+
+    loadSavedState();
+  }, [id, user]);
+
   async function loadJob() {
     try {
       const { job: fetchedJob } = await apiCall(`/jobs/${id}`);
@@ -50,7 +61,87 @@ export default function JobDetail() {
     }
   }
 
+  async function loadSavedState() {
+    try {
+      const { jobs: savedJobs } = await apiCall('/saved-jobs', { requireAuth: true });
+      const savedIds = new Set(
+        ((savedJobs || []) as Array<{ id?: string }>).map((savedJob) => String(savedJob.id || ''))
+      );
+      setIsSaved(savedIds.has(String(id)));
+    } catch {
+      setIsSaved(false);
+    }
+  }
+
   const isSeeker = !authLoading && !!user && !!(profile?.userType === 'seeker' || (profile as any)?.user_type === 'seeker');
+
+  async function handleToggleSave() {
+    if (!id) return;
+    setTogglingSave(true);
+    try {
+      if (isSaved) {
+        await apiCall(`/saved-jobs/${id}`, { method: 'DELETE', requireAuth: true });
+        setIsSaved(false);
+        toast.success('Job removed from saved');
+      } else {
+        await apiCall('/saved-jobs', {
+          requireAuth: true,
+          method: 'POST',
+          body: JSON.stringify({ jobId: id }),
+        });
+        setIsSaved(true);
+        toast.success('Job saved successfully');
+      }
+    } catch {
+      toast.error('Please login to save jobs');
+    } finally {
+      setTogglingSave(false);
+    }
+  }
+
+  async function handleShareJob() {
+    if (!job || !id) return;
+    const shareUrl = `${window.location.origin}/jobs/${id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: job.title,
+          text: `Check out this role: ${job.title}`,
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Job link copied to clipboard');
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      toast.error('Unable to share this job right now');
+    }
+  }
+
+  async function handleReportListing() {
+    if (!job || !id) return;
+
+    const reportUrl = `${window.location.origin}/jobs/${id}`;
+    const subject = `Report listing: ${job.title}`;
+    const body = [
+      `Job title: ${job.title}`,
+      `Job link: ${reportUrl}`,
+      '',
+      'Please describe the issue with this listing:',
+    ].join('\n');
+
+    const mailtoLink = `mailto:support@recruitfriend.co.za?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    try {
+      window.location.href = mailtoLink;
+      await navigator.clipboard.writeText(reportUrl);
+      toast.success('Report email opened. Job link copied to clipboard.');
+    } catch {
+      toast.info('Report email opened. Please include the job link and issue details.');
+    }
+  }
 
   async function handleQuickApply() {
     if (!user) {
@@ -82,6 +173,7 @@ export default function JobDetail() {
     setApplying(true);
     try {
       await apiCall('/applications', {
+        requireAuth: true,
         method: 'POST',
         body: JSON.stringify({
           jobId: id,
@@ -124,6 +216,7 @@ export default function JobDetail() {
     setApplying(true);
     try {
       await apiCall('/applications', {
+        requireAuth: true,
         method: 'POST',
         body: JSON.stringify({
           jobId: id,
@@ -306,8 +399,13 @@ export default function JobDetail() {
                       </span>
                     </div>
                   </div>
-                  <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                    <Heart className="w-6 h-6 text-gray-400" />
+                  <button
+                    onClick={handleToggleSave}
+                    disabled={togglingSave}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-60"
+                    aria-label={isSaved ? 'Remove from favourites' : 'Add to favourites'}
+                  >
+                    <Heart className={`w-6 h-6 ${isSaved ? 'fill-[var(--rf-orange)] text-[var(--rf-orange)]' : 'text-gray-400'}`} />
                   </button>
                 </div>
 
@@ -410,12 +508,19 @@ export default function JobDetail() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-[var(--rf-text)]">Share this job:</span>
                     <div className="flex space-x-3">
-                      <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                      <button
+                        onClick={handleShareJob}
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        aria-label="Share this job"
+                      >
                         <Share2 className="w-5 h-5 text-[var(--rf-muted)]" />
                       </button>
                     </div>
                   </div>
-                  <button className="text-xs text-[var(--rf-muted)] hover:text-[var(--rf-error)] mt-4 flex items-center">
+                  <button
+                    onClick={handleReportListing}
+                    className="text-xs text-[var(--rf-muted)] hover:text-[var(--rf-error)] mt-4 flex items-center"
+                  >
                     <Flag className="w-3 h-3 mr-1" />
                     Report listing
                   </button>

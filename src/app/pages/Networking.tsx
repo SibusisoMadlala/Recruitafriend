@@ -43,7 +43,7 @@ export default function Networking() {
     }
 
     function showHowItWorks() {
-        toast.info('Share your link, earn R50 on signup and R500 when your referral gets hired.');
+        toast.info('Share your link, earn R50 on signup and R50 when your referral gets employed.');
     }
 
     async function shareMore() {
@@ -107,7 +107,7 @@ export default function Networking() {
                 <Gift className="w-10 h-10 mb-4 text-white opacity-90" />
                 <h2 className="text-2xl font-bold mb-2">Refer & Earn</h2>
                 <p className="mb-6 opacity-90 text-sm">
-                    Share your unique link. Earn <span className="font-bold">R50</span> when a friend signs up and <span className="font-bold">R500</span> when they get hired!
+                    Share your unique link. Earn <span className="font-bold">R50</span> when a friend signs up and <span className="font-bold">R50</span> when they get employed!
                 </p>
                 
                 <div className="bg-white/20 backdrop-blur-sm rounded-[var(--rf-radius-md)] p-1 flex items-center mb-4 border border-white/30">

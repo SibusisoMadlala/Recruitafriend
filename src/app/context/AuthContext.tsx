@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, apiCall, buildAppUrl } from '../lib/supabase';
+import { supabase, apiCall, buildAppUrl, isSessionNotFoundError } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { AuthContext, UserProfile } from './auth-context';
 
@@ -45,17 +45,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requireAuth: true,
         accessTokenOverride,
       });
-      const { data: { user: authUser } } = await supabase.auth.getUser(accessTokenOverride);
+      const { data: { user: authUser }, error: authUserError } = await supabase.auth.getUser(accessTokenOverride);
+      if (isSessionNotFoundError(authUserError)) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setProfile(null);
+        return null;
+      }
       const normalizedProfile = normalizeProfile(userProfile, authUser);
       setProfile(normalizedProfile);
       return normalizedProfile;
     } catch (error: any) {
       const msg = String(error?.message || '');
       const isPolicyRecursion = /infinite recursion detected in policy for relation\s+"profiles"|42P17/i.test(msg);
-      const isExpectedAuthTransition = /Invalid JWT|Not authenticated|401|Missing authorization header/.test(msg) || isPolicyRecursion;
+      const isSessionNotFound = isSessionNotFoundError(error) || /session_not_found|session from session_id claim in jwt does not exist/i.test(msg);
+      const isExpectedAuthTransition = /Invalid JWT|Not authenticated|401|Missing authorization header|Session expired/.test(msg) || isPolicyRecursion || isSessionNotFound;
+
+      if (isSessionNotFound) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setProfile(null);
+        return null;
+      }
 
       if (/Missing authorization header|Invalid JWT/.test(msg) || isPolicyRecursion) {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: { user: authUser }, error: fallbackAuthUserError } = await supabase.auth.getUser();
+        if (isSessionNotFoundError(fallbackAuthUserError)) {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          setProfile(null);
+          return null;
+        }
         if (authUser) {
           let profileRow: any = null;
 

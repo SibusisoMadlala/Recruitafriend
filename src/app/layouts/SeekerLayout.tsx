@@ -134,17 +134,9 @@ export default function SeekerLayout() {
       </nav>
 
       <div className="p-5 md:p-6 border-t border-white border-opacity-10 mt-auto">
-        <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-[var(--rf-radius-md)] p-4 text-center border border-gray-700">
-          <span className="block text-xs text-gray-400 uppercase tracking-widest mb-1">Current Plan</span>
-          <span className="block text-lg font-bold text-white tracking-wider">{(profile?.subscription || 'Free').toUpperCase()} PLAN</span>
-          <Link to="/seeker/subscriptions" className="block mt-3 text-xs text-[var(--rf-green)] font-bold hover:underline">
-            {profile?.subscription && profile.subscription.toLowerCase() !== 'free' ? 'MANAGE PLAN' : 'UPGRADE NOW'}
-          </Link>
-        </div>
-
         <button
           onClick={() => signOut()}
-          className="flex items-center justify-center space-x-2 w-full mt-4 text-gray-400 hover:text-white transition-colors py-2"
+          className="flex items-center justify-center space-x-2 w-full text-gray-400 hover:text-white transition-colors py-2"
         >
           <LogOut className="w-4 h-4" />
           <span className="text-sm">Logout</span>

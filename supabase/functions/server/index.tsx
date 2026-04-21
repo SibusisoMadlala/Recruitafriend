@@ -125,6 +125,18 @@ type SmtpConfig = {
   maxAttempts: number;
 };
 
+type EmailMessage = {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+};
+
+type EmailTransporter = {
+  sendMail: (message: EmailMessage) => Promise<{ messageId: string }>;
+};
+
 const SENDER_POLICY: Record<ProductEmailCategory, { fromNameEnv: string; fallbackFromName: string }> = {
   alerts: {
     fromNameEnv: 'SMTP_FROM_NAME_ALERTS',
@@ -466,51 +478,72 @@ async function writeEmailLog(
   }
 }
 
+function createSmtpTransporter(config: SmtpConfig): EmailTransporter {
+  return {
+    async sendMail(message: EmailMessage) {
+      const client = new SmtpClient();
+      try {
+        if (config.secure) {
+          await client.connectTLS({
+            hostname: config.host,
+            port: config.port,
+            username: config.auth.user,
+            password: config.auth.pass,
+          });
+        } else {
+          await client.connect({
+            hostname: config.host,
+            port: config.port,
+            username: config.auth.user,
+            password: config.auth.pass,
+          });
+        }
+
+        await client.send({
+          from: message.from,
+          to: message.to,
+          subject: message.subject,
+          content: message.text,
+          html: message.html,
+        });
+
+        return { messageId: `${Date.now()}-${crypto.randomUUID()}` };
+      } finally {
+        try {
+          await client.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+    },
+  };
+}
+
 async function sendSmtpEmail(
-  config: SmtpConfig,
+  category: ProductEmailCategory,
   to: string,
   subject: string,
   body: string,
   html: string
 ) {
+  const config = getSmtpConfig(category);
+  const transporter = createSmtpTransporter(config);
+  const from = `${config.fromName} <${config.fromEmail}>`;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
-    const client = new SmtpClient();
     try {
-      if (config.secure) {
-        await client.connectTLS({
-          hostname: config.host,
-          port: config.port,
-          username: config.auth.user,
-          password: config.auth.pass,
-        });
-      } else {
-        await client.connect({
-          hostname: config.host,
-          port: config.port,
-          username: config.auth.user,
-          password: config.auth.pass,
-        });
-      }
-
-      await client.send({
-        from: `${config.fromName} <${config.fromEmail}>`,
+      const sendResult = await transporter.sendMail({
+        from,
         to,
         subject,
-        content: body,
+        text: body,
         html,
       });
 
-      await client.close();
-      return { ok: true as const, attempt, providerMessageId: `${Date.now()}-${attempt}` };
+      return { ok: true as const, attempt, providerMessageId: sendResult.messageId };
     } catch (error) {
       lastError = error;
-      try {
-        await client.close();
-      } catch {
-        // ignore close failures
-      }
 
       if (attempt < config.maxAttempts) {
         const backoffMs = Math.min(1500, attempt * 250);
@@ -612,6 +645,29 @@ async function getProfileLite(db: ReturnType<typeof getDb>, userId: string) {
   return data as ProfileLite | null;
 }
 
+async function resolveRecipientEmail(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  profileEmail: string | null | undefined,
+  contextLabel: string,
+): Promise<string | null> {
+  const profile = String(profileEmail || '').trim().toLowerCase();
+  if (/^\S+@\S+\.\S+$/.test(profile)) return profile;
+
+  try {
+    const { data: authUserData, error: authUserError } = await db.auth.admin.getUserById(userId);
+    if (authUserError) {
+      console.error(`Failed to resolve ${contextLabel} email from auth user:`, authUserError);
+    }
+    const authEmail = String(authUserData?.user?.email || '').trim().toLowerCase();
+    if (/^\S+@\S+\.\S+$/.test(authEmail)) return authEmail;
+  } catch (authLookupError) {
+    console.error(`Auth user email lookup failed for ${contextLabel}:`, authLookupError);
+  }
+
+  return null;
+}
+
 async function dispatchProductEmail(db: ReturnType<typeof getDb>, request: ProductEmailRequest) {
   const email = String(request.recipientEmail || '').trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) {
@@ -660,7 +716,7 @@ async function dispatchProductEmail(db: ReturnType<typeof getDb>, request: Produ
     status: 'pending',
   });
 
-  const result = await sendSmtpEmail(smtpConfig, email, request.subject, body, html);
+  const result = await sendSmtpEmail(request.category, email, request.subject, body, html);
   if (!result.ok) {
     await writeEmailLog(db, {
       eventType: request.eventType,
@@ -824,11 +880,17 @@ function nextDispatchForFrequency(frequency: string, from = new Date()) {
 }
 
 // Helper to get authenticated user
-async function getAuthUser(authHeader: string | null) {
-  if (!authHeader) return null;
-  if (!authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.split(' ')[1];
-  if (!token || token.split('.').length !== 3) return null;
+async function getAuthUser(authHeader: string | null, delegatedToken?: string | null) {
+  let token = '';
+
+  if (typeof delegatedToken === 'string' && delegatedToken.trim() && delegatedToken.trim().split('.').length === 3) {
+    token = delegatedToken.trim();
+  } else {
+    if (!authHeader) return null;
+    if (!authHeader.startsWith('Bearer ')) return null;
+    token = authHeader.split(' ')[1];
+    if (!token || token.split('.').length !== 3) return null;
+  }
 
   const db = getDb();
   const { data: { user }, error } = await db.auth.getUser(token);
@@ -836,8 +898,8 @@ async function getAuthUser(authHeader: string | null) {
   return user;
 }
 
-async function requireSeeker(authHeader: string | null) {
-  const user = await getAuthUser(authHeader);
+async function requireSeeker(authHeader: string | null, delegatedToken?: string | null) {
+  const user = await getAuthUser(authHeader, delegatedToken);
   if (!user) return { error: 'Unauthorized', code: 401 as const, user: null };
 
   const db = getDb();
@@ -849,8 +911,8 @@ async function requireSeeker(authHeader: string | null) {
   return { error: null, code: 200 as const, user };
 }
 
-async function requireEmployer(authHeader: string | null) {
-  const user = await getAuthUser(authHeader);
+async function requireEmployer(authHeader: string | null, delegatedToken?: string | null) {
+  const user = await getAuthUser(authHeader, delegatedToken);
   if (!user) return { error: 'Unauthorized', code: 401 as const, user: null };
 
   const db = getDb();
@@ -862,8 +924,8 @@ async function requireEmployer(authHeader: string | null) {
   return { error: null, code: 200 as const, user };
 }
 
-async function requireAdmin(authHeader: string | null) {
-  const user = await getAuthUser(authHeader);
+async function requireAdmin(authHeader: string | null, delegatedToken?: string | null) {
+  const user = await getAuthUser(authHeader, delegatedToken);
   if (!user) return { error: 'Unauthorized', code: 401 as const, user: null, profile: null };
 
   const db = getDb();
@@ -875,8 +937,8 @@ async function requireAdmin(authHeader: string | null) {
   return { error: null, code: 200 as const, user, profile };
 }
 
-async function requireApprovedEmployer(authHeader: string | null) {
-  const user = await getAuthUser(authHeader);
+async function requireApprovedEmployer(authHeader: string | null, delegatedToken?: string | null) {
+  const user = await getAuthUser(authHeader, delegatedToken);
   if (!user) {
     return {
       error: 'Unauthorized',
@@ -1080,7 +1142,7 @@ app.get('/make-server-bca21fd3/auth/verify/:payload', async (c) => {
 // Get current user profile
 app.get('/make-server-bca21fd3/auth/profile', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const db = getDb();
@@ -1121,7 +1183,7 @@ app.get('/make-server-bca21fd3/auth/profile', async (c) => {
 // Update user profile
 app.put('/make-server-bca21fd3/auth/profile', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const updates = await c.req.json();
@@ -1278,7 +1340,8 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
 // Create job (employer only)
 app.post('/make-server-bca21fd3/jobs', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1321,7 +1384,7 @@ app.post('/make-server-bca21fd3/jobs', async (c) => {
 // Update job
 app.put('/make-server-bca21fd3/jobs/:id', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const id = c.req.param('id');
@@ -1348,7 +1411,8 @@ app.put('/make-server-bca21fd3/jobs/:id', async (c) => {
 // Get employer's jobs
 app.get('/make-server-bca21fd3/employer/jobs', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1374,7 +1438,8 @@ app.get('/make-server-bca21fd3/employer/jobs', async (c) => {
 // Get employer stats
 app.get('/make-server-bca21fd3/employer/stats', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1438,7 +1503,8 @@ app.get('/make-server-bca21fd3/employer/stats', async (c) => {
 // Apply to job
 app.post('/make-server-bca21fd3/applications', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const { jobId, coverLetter, customLetter, screeningAnswers } = await c.req.json();
@@ -1468,7 +1534,130 @@ app.post('/make-server-bca21fd3/applications', async (c) => {
       .single();
 
     if (error) throw error;
-    return c.json({ application });
+
+    // Submit-time dual notifications (non-blocking)
+    const emailDelivery: { employer: string; seeker: string } = { employer: 'skipped', seeker: 'skipped' };
+    try {
+      const [{ data: job }, { data: seekerProfile }] = await Promise.all([
+        db.from('jobs').select('id, title, employer_id').eq('id', jobId).maybeSingle(),
+        db.from('profiles').select('id, name, email').eq('id', user.id).maybeSingle(),
+      ]);
+
+      const employerProfile = job?.employer_id
+        ? (await db.from('profiles').select('id, name, email').eq('id', job.employer_id).maybeSingle()).data
+        : null;
+
+      const seekerEmail = await resolveRecipientEmail(db, user.id, seekerProfile?.email, 'seeker submit receipt');
+      const employerEmail = job?.employer_id
+        ? await resolveRecipientEmail(db, job.employer_id, employerProfile?.email, 'employer submit notice')
+        : null;
+
+      const submittedAt = new Date(application.created_at || Date.now()).toUTCString();
+
+      if (employerEmail) {
+        try {
+          const result = await dispatchProductEmail(db, {
+            eventType: 'application.submission_employer_notice',
+            eventKey: `app-submission:employer:${application.id}`,
+            recipientEmail: employerEmail,
+            subject: `New application for ${String(job?.title || 'your job posting')}`,
+            templateKey: 'application_submission_employer_notice',
+            category: 'employer_communications',
+            template: [
+              'Hi {{employer_name}},',
+              '',
+              '{{applicant_name}} has submitted an application for {{job_title}}.',
+              '',
+              'Submitted: {{submitted_at}}',
+              '',
+              'Log in to RecruitFriend to review the application.',
+              '',
+              '— The RecruitFriend team',
+            ].join('\n'),
+            templateVars: {
+              employer_name: String(employerProfile?.name || 'Hiring Manager'),
+              applicant_name: String(seekerProfile?.name || 'A candidate'),
+              job_title: String(job?.title || 'your job posting'),
+              submitted_at: submittedAt,
+            },
+          });
+          emailDelivery.employer = result.status;
+        } catch (employerEmailError) {
+          console.error('Employer submit notification failed:', employerEmailError);
+          emailDelivery.employer = 'failed';
+        }
+      } else if (job?.employer_id) {
+        console.warn('Skipping employer submit notification: no resolvable recipient email', {
+          applicationId: application.id,
+          employerId: job.employer_id,
+        });
+        await writeEmailLog(db, {
+          eventType: 'application.submission_employer_notice',
+          eventKey: `app-submission:employer:${application.id}`,
+          category: 'employer_communications',
+          recipientEmail: 'unresolved',
+          subject: `New application for ${String(job?.title || 'your job posting')}`,
+          templateKey: 'application_submission_employer_notice',
+          templateVars: {},
+          status: 'suppressed',
+          errorMessage: 'No resolvable recipient email',
+        });
+      }
+
+      if (seekerEmail) {
+        try {
+          const result = await dispatchProductEmail(db, {
+            eventType: 'application.submission_seeker_receipt',
+            eventKey: `app-submission:seeker:${application.id}`,
+            recipientEmail: seekerEmail,
+            subject: `Your application for ${String(job?.title || 'the role')} was received`,
+            templateKey: 'application_submission_seeker_receipt',
+            category: 'alerts',
+            template: [
+              'Hi {{applicant_name}},',
+              '',
+              'Your application for {{job_title}} at {{company_name}} has been received.',
+              '',
+              'Submitted: {{submitted_at}}',
+              '',
+              'We will keep you updated as your application progresses.',
+              '',
+              '— The RecruitFriend team',
+            ].join('\n'),
+            templateVars: {
+              applicant_name: String(seekerProfile?.name || 'there'),
+              job_title: String(job?.title || 'the role'),
+              company_name: String(employerProfile?.name || 'the employer'),
+              submitted_at: submittedAt,
+            },
+          });
+          emailDelivery.seeker = result.status;
+        } catch (seekerEmailError) {
+          console.error('Seeker submit receipt failed:', seekerEmailError);
+          emailDelivery.seeker = 'failed';
+        }
+      } else {
+        console.warn('Skipping seeker submit receipt: no resolvable recipient email', {
+          applicationId: application.id,
+          seekerId: user.id,
+        });
+        await writeEmailLog(db, {
+          eventType: 'application.submission_seeker_receipt',
+          eventKey: `app-submission:seeker:${application.id}`,
+          category: 'alerts',
+          recipientEmail: 'unresolved',
+          subject: `Your application for ${String(job?.title || 'the role')} was received`,
+          templateKey: 'application_submission_seeker_receipt',
+          templateVars: {},
+          status: 'suppressed',
+          errorMessage: 'No resolvable recipient email',
+        });
+      }
+    } catch (notifyError) {
+      console.error('Submit-time application notification error:', notifyError);
+    }
+
+    return c.json({ application, emailDelivery });
   } catch (error) {
     console.error('Apply to job error:', error);
     return c.json({ error: 'Failed to apply to job' }, 500);
@@ -1478,22 +1667,70 @@ app.post('/make-server-bca21fd3/applications', async (c) => {
 // Get user's applications
 app.get('/make-server-bca21fd3/applications/my', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const db = getDb();
     const { data: applications, error } = await db
       .from('applications')
-      .select('*, job:jobs(id, title, city, province, employment_type, employer:profiles!jobs_employer_id_fkey(name, avatar_url))')
+      .select('*')
       .eq('seeker_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    const normalized = (applications || []).map((app: Record<string, unknown>) => {
-      const job = app.job as Record<string, unknown> | null;
-      const employer = (job?.employer as Record<string, unknown> | null);
-      return { ...app, job_title: job?.title || '', company: employer?.name || '' };
+    const rows = (applications || []) as Array<Record<string, unknown>>;
+    if (rows.length === 0) {
+      return c.json({ applications: [] });
+    }
+
+    const jobIds = [...new Set(rows.map((app) => String(app.job_id || '')).filter(Boolean))];
+    const { data: jobs, error: jobsError } = jobIds.length > 0
+      ? await db
+          .from('jobs')
+          .select('id, title, city, province, employment_type, employer_id')
+          .in('id', jobIds)
+      : { data: [] as Array<Record<string, unknown>>, error: null };
+
+    if (jobsError) throw jobsError;
+
+    const jobMap: Record<string, Record<string, unknown>> = {};
+    (jobs || []).forEach((job) => {
+      jobMap[String(job.id)] = job as Record<string, unknown>;
+    });
+
+    const employerIds = [...new Set((jobs || []).map((job) => String(job.employer_id || '')).filter(Boolean))];
+    const { data: employers, error: employersError } = employerIds.length > 0
+      ? await db
+          .from('profiles')
+          .select('id, name, avatar_url')
+          .in('id', employerIds)
+      : { data: [] as Array<Record<string, unknown>>, error: null };
+
+    if (employersError) throw employersError;
+
+    const employerMap: Record<string, Record<string, unknown>> = {};
+    (employers || []).forEach((employer) => {
+      employerMap[String(employer.id)] = employer as Record<string, unknown>;
+    });
+
+    const normalized = rows.map((app) => {
+      const job = jobMap[String(app.job_id || '')] || null;
+      const employer = job ? employerMap[String(job.employer_id || '')] || null : null;
+      const hydratedJob = job
+        ? {
+            ...job,
+            employer: employer ? { name: employer.name || '', avatar_url: employer.avatar_url || null } : null,
+          }
+        : null;
+
+      return {
+        ...app,
+        job: hydratedJob,
+        job_title: String(job?.title || ''),
+        company: String(employer?.name || ''),
+      };
     });
 
     return c.json({ applications: normalized });
@@ -1506,7 +1743,8 @@ app.get('/make-server-bca21fd3/applications/my', async (c) => {
 // Get applications for a job (employer)
 app.get('/make-server-bca21fd3/jobs/:jobId/applications', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1575,7 +1813,8 @@ app.get('/make-server-bca21fd3/jobs/:jobId/applications', async (c) => {
 // Get a seeker's profile by ID (employer use — to populate applicant profile dialog)
 app.get('/make-server-bca21fd3/employer/seeker/:seekerId', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1600,10 +1839,111 @@ app.get('/make-server-bca21fd3/employer/seeker/:seekerId', async (c) => {
   }
 });
 
+app.get('/make-server-bca21fd3/employer/seeker/:seekerId/cv/latest', async (c) => {
+  try {
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
+    if (!auth.user) {
+      if (auth.deniedPayload) {
+        return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
+      }
+      return c.json({ error: auth.error }, auth.code);
+    }
+
+    const seekerId = c.req.param('seekerId');
+    const db = getDb();
+
+    const { data: employerJobs, error: jobsError } = await db
+      .from('jobs')
+      .select('id')
+      .eq('employer_id', auth.user.id);
+
+    if (jobsError) throw jobsError;
+
+    const jobIds = (employerJobs || []).map((job: Record<string, unknown>) => String(job.id || '')).filter(Boolean);
+    if (jobIds.length === 0) {
+      return c.json({ error: 'Not authorized to access this candidate CV' }, 403);
+    }
+
+    const { data: linkableApplication, error: linkError } = await db
+      .from('applications')
+      .select('id')
+      .eq('seeker_id', seekerId)
+      .in('job_id', jobIds)
+      .limit(1)
+      .maybeSingle();
+
+    if (linkError) throw linkError;
+    if (!linkableApplication) {
+      return c.json({ error: 'Not authorized to access this candidate CV' }, 403);
+    }
+
+    let cvFile: Record<string, unknown> | null = null;
+    const { data: storageAwareCvFile, error: cvError } = await db
+      .from('cv_files')
+      .select('*')
+      .eq('seeker_id', seekerId)
+      .not('storage_path', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (cvError) {
+      if (!isMissingColumnError(cvError)) throw cvError;
+
+      // Backward compatibility for environments where storage metadata columns
+      // have not been migrated yet.
+      const { data: legacyCvFile, error: legacyError } = await db
+        .from('cv_files')
+        .select('*')
+        .eq('seeker_id', seekerId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (legacyError) throw legacyError;
+      cvFile = (legacyCvFile as Record<string, unknown> | null) || null;
+    } else {
+      cvFile = (storageAwareCvFile as Record<string, unknown> | null) || null;
+    }
+
+    if (!cvFile || !cvFile.storage_path) {
+      return c.json({
+        error: 'No uploaded CV file is available for this candidate yet',
+        code: 'CV_FILE_NOT_AVAILABLE',
+      }, 404);
+    }
+
+    const bucket = String(cvFile.storage_bucket || 'seeker-cvs').trim() || 'seeker-cvs';
+    const path = String(cvFile.storage_path || '').trim();
+
+    const { data: signedData, error: signedError } = await db.storage
+      .from(bucket)
+      .createSignedUrl(path, 60 * 10);
+
+    if (signedError || !signedData?.signedUrl) {
+      const signedErrorMessage = String((signedError as { message?: string } | null)?.message || '');
+      if (/bucket|not found|does not exist/i.test(signedErrorMessage)) {
+        return c.json({
+          error: 'CV storage bucket is not available in this environment',
+          code: 'CV_STORAGE_NOT_READY',
+        }, 409);
+      }
+      console.error('Failed to create signed URL for candidate CV:', signedError);
+      return c.json({ error: 'Failed to prepare CV access link' }, 500);
+    }
+
+    return c.json({ cvFile, signedUrl: signedData.signedUrl });
+  } catch (error) {
+    console.error('Get candidate latest CV error:', error);
+    return c.json({ error: 'Failed to retrieve candidate CV' }, 500);
+  }
+});
+
 // Talent search for employers
 app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) {
       if (auth.deniedPayload) {
         return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
@@ -1617,14 +1957,13 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
     const location = String(c.req.query('location') || '').trim();
     const hasVideoOnly = ['true', '1', 'yes'].includes(String(c.req.query('hasVideo') || '').toLowerCase());
     const sortBy = String(c.req.query('sort') || 'relevance').toLowerCase();
+    const page = Math.max(1, parseInt(String(c.req.query('page') || '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(c.req.query('limit') || '50'), 10) || 50));
     const levelsRaw = String(c.req.query('levels') || '');
     const levels = levelsRaw
       .split(',')
       .map((level) => level.trim().toLowerCase())
       .filter((level): level is ExperienceLevel => (EXPERIENCE_LEVELS as readonly string[]).includes(level));
-
-    const page = Math.max(1, Number.parseInt(String(c.req.query('page') || '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(c.req.query('limit') || '50'), 10) || 50));
 
     let query = db
       .from('profiles')
@@ -1665,14 +2004,25 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
       };
     });
 
+    const normalizedSearch = search.toLowerCase();
+
     const filtered = normalized.filter((candidate) => {
       const matchesVideo = !hasVideoOnly || !!candidate.video_introduction;
       const matchesLevels = levels.length === 0 || levels.includes(candidate.experienceLevel);
-      const matchesSearchSkills =
-        !search ||
-        candidate.skills.some((skill: string) => skill.toLowerCase().includes(search.toLowerCase()));
 
-      return matchesVideo && matchesLevels && matchesSearchSkills;
+      const haystack = [
+        candidate.name,
+        candidate.headline,
+        candidate.summary,
+        candidate.location,
+        ...(Array.isArray(candidate.skills) ? candidate.skills : []),
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+
+      const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
+
+      return matchesVideo && matchesLevels && matchesSearch;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -1691,11 +2041,16 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
     });
 
     const totalCount = sorted.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-    const candidates = sorted.slice(start, end);
+    const offset = (page - 1) * limit;
+    const candidates = sorted.slice(offset, offset + limit);
 
-    return c.json({ candidates, count: candidates.length, totalCount, page, limit });
+    return c.json({
+      candidates,
+      count: candidates.length,
+      totalCount,
+      page,
+      limit,
+    });
   } catch (error) {
     console.error('Talent search error:', error);
     return c.json({ error: 'Failed to search candidates' }, 500);
@@ -1705,7 +2060,8 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
 // Update application status
 app.put('/make-server-bca21fd3/applications/:id', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const id = c.req.param('id');
@@ -1723,7 +2079,7 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
     if (!isEmployer && !isSeekerOwner) return c.json({ error: 'Not authorized' }, 403);
 
     if (isEmployer) {
-      const employerAuth = await requireApprovedEmployer(c.req.header('Authorization'));
+      const employerAuth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
       if (!employerAuth.user) {
         if (employerAuth.deniedPayload) {
           return c.json({ error: employerAuth.error, ...employerAuth.deniedPayload }, employerAuth.code);
@@ -1749,7 +2105,7 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
     const nextStatus = String(status || '').trim().toLowerCase();
     const stageChanged = previousStatus !== nextStatus;
 
-    let emailSent = false;
+    const emailDelivery: { seeker?: string; employer?: string } = {};
 
     if (isEmployer && stageChanged) {
       try {
@@ -1769,20 +2125,9 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
           db.from('profiles').select('id, name').eq('id', user.id).maybeSingle(),
         ]);
 
-        let seekerEmail = String(seekerProfile?.email || '').trim().toLowerCase();
-        if (!/^\S+@\S+\.\S+$/.test(seekerEmail)) {
-          try {
-            const { data: authUserData, error: authUserError } = await db.auth.admin.getUserById(appRecord.seeker_id);
-            if (authUserError) {
-              console.error('Failed to resolve seeker email from auth user:', authUserError);
-            }
-            seekerEmail = String(authUserData?.user?.email || '').trim().toLowerCase();
-          } catch (authLookupError) {
-            console.error('Auth user email lookup failed for seeker notification:', authLookupError);
-          }
-        }
+        const seekerEmail = await resolveRecipientEmail(db, appRecord.seeker_id, seekerProfile?.email, 'seeker stage notification');
 
-        if (/^\S+@\S+\.\S+$/.test(seekerEmail)) {
+        if (seekerEmail) {
           const { templates } = await resolveEmployerSettings(db, user.id);
 
           if (nextStatus === 'interview') {
@@ -1790,24 +2135,31 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
               templates.interviewInvite ||
               'Hi {{candidate_name}}, we would like to invite you to interview for {{job_title}} at {{company_name}}. Scheduled time: {{scheduled_at}}. Join link: {{meeting_link}}'
             );
+            const scheduledAt = String(interviewMeta?.scheduled_at || '').trim() || 'TBD';
+            const meetingLink = String(interviewMeta?.link || '').trim() || 'Will be shared separately';
 
-            await dispatchProductEmail(db, {
-              eventType: 'employer.interview_invite',
-              eventKey: `interview:${application.id}:${application.updated_at || new Date().toISOString()}`,
-              recipientEmail: seekerEmail,
-              subject: `Interview invitation for ${String(jobProfile?.title || 'your application')}`,
-              templateKey: 'interview_invite',
-              category: 'employer_communications',
-              template: interviewTemplate,
-              templateVars: {
-                candidate_name: String(seekerProfile?.name || 'Candidate'),
-                job_title: String(jobProfile?.title || 'the role'),
-                company_name: String(employerProfile?.name || 'RecruitFriend employer'),
-                scheduled_at: String(interviewMeta?.scheduled_at || 'TBD'),
-                meeting_link: String(interviewMeta?.link || 'Will be shared separately'),
-              },
-            });
-            emailSent = true;
+            try {
+              const result = await dispatchProductEmail(db, {
+                eventType: 'application.interview_invite',
+                eventKey: `app-stage:${application.id}:${previousStatus}-interview`,
+                recipientEmail: seekerEmail,
+                subject: `Interview invitation for ${String(jobProfile?.title || 'your application')}`,
+                templateKey: 'interview_invite',
+                category: 'employer_communications',
+                template: interviewTemplate,
+                templateVars: {
+                  candidate_name: String(seekerProfile?.name || 'Candidate'),
+                  job_title: String(jobProfile?.title || 'the role'),
+                  company_name: String(employerProfile?.name || 'RecruitFriend employer'),
+                  scheduled_at: scheduledAt,
+                  meeting_link: meetingLink,
+                },
+              });
+              emailDelivery.seeker = result.status;
+            } catch (inviteError) {
+              console.error('Interview invite dispatch failed:', inviteError);
+              emailDelivery.seeker = 'failed';
+            }
           } else {
             const stageTemplate = nextStatus === 'rejected'
               ? String(
@@ -1816,37 +2168,119 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
               )
               : 'Hi {{candidate_name}}, your application for {{job_title}} at {{company_name}} has moved from {{from_stage}} to {{to_stage}}. We will contact you with next steps if needed.';
 
-            await dispatchProductEmail(db, {
-              eventType: 'employer.application_stage_update',
-              eventKey: `application-stage:${application.id}:${application.updated_at || new Date().toISOString()}:${nextStatus}`,
-              recipientEmail: seekerEmail,
-              subject: `Update on your application for ${String(jobProfile?.title || 'this role')}`,
-              templateKey: nextStatus === 'rejected' ? 'application_rejection' : 'application_stage_update',
-              category: 'employer_communications',
-              template: stageTemplate,
-              templateVars: {
-                candidate_name: String(seekerProfile?.name || 'Candidate'),
-                job_title: String(jobProfile?.title || 'the role'),
-                company_name: String(employerProfile?.name || 'RecruitFriend employer'),
-                from_stage: statusLabels[previousStatus] || previousStatus || 'Previous stage',
-                to_stage: statusLabels[nextStatus] || nextStatus || 'Next stage',
-              },
-            });
-            emailSent = true;
+            try {
+              const result = await dispatchProductEmail(db, {
+                eventType: 'application.stage_update',
+                eventKey: `app-stage:${application.id}:${previousStatus}-${nextStatus}`,
+                recipientEmail: seekerEmail,
+                subject: `Update on your application for ${String(jobProfile?.title || 'this role')}`,
+                templateKey: nextStatus === 'rejected' ? 'application_rejection' : 'application_stage_update',
+                category: 'employer_communications',
+                template: stageTemplate,
+                templateVars: {
+                  candidate_name: String(seekerProfile?.name || 'Candidate'),
+                  job_title: String(jobProfile?.title || 'the role'),
+                  company_name: String(employerProfile?.name || 'RecruitFriend employer'),
+                  from_stage: statusLabels[previousStatus] || previousStatus || 'Previous stage',
+                  to_stage: statusLabels[nextStatus] || nextStatus || 'Next stage',
+                },
+              });
+              emailDelivery.seeker = result.status;
+            } catch (stageError) {
+              console.error('Application stage update dispatch failed:', stageError);
+              emailDelivery.seeker = 'failed';
+            }
           }
         } else {
-          console.warn('Skipping application status email due to missing recipient email', {
+          console.warn('Skipping application stage email: no resolvable seeker recipient email', {
             applicationId: application.id,
             seekerId: appRecord.seeker_id,
             nextStatus,
           });
+          await writeEmailLog(db, {
+            eventType: nextStatus === 'interview' ? 'application.interview_invite' : 'application.stage_update',
+            eventKey: `app-stage:${application.id}:${previousStatus}-${nextStatus}`,
+            category: 'employer_communications',
+            recipientEmail: 'unresolved',
+            subject: `Update on your application for ${String(jobProfile?.title || 'this role')}`,
+            templateKey: nextStatus === 'interview' ? 'interview_invite' : 'application_stage_update',
+            templateVars: {},
+            status: 'suppressed',
+            errorMessage: 'No resolvable recipient email',
+          });
+          emailDelivery.seeker = 'skipped';
         }
-      } catch (inviteError) {
-        console.error('Application status email dispatch failed:', inviteError);
+      } catch (notifyError) {
+        console.error('Application status email dispatch failed:', notifyError);
       }
     }
 
-    return c.json({ application, emailSent });
+    // Withdrawal notification to employer (seeker-initiated, non-blocking)
+    if (isSeekerOwner && stageChanged && nextStatus === 'rejected') {
+      try {
+        const [{ data: jobProfile }, { data: seekerProfile }] = await Promise.all([
+          db.from('jobs').select('id, title, employer_id').eq('id', appRecord.job_id).maybeSingle(),
+          db.from('profiles').select('id, name, email').eq('id', user.id).maybeSingle(),
+        ]);
+
+        const employerProfile = jobProfile?.employer_id
+          ? (await db.from('profiles').select('id, name, email').eq('id', jobProfile.employer_id).maybeSingle()).data
+          : null;
+        const employerEmail = jobProfile?.employer_id
+          ? await resolveRecipientEmail(db, jobProfile.employer_id, employerProfile?.email, 'employer withdrawal notice')
+          : null;
+
+        if (employerEmail) {
+          try {
+            const result = await dispatchProductEmail(db, {
+              eventType: 'application.withdrawal_employer_notice',
+              eventKey: `app-withdrawal:employer:${application.id}`,
+              recipientEmail: employerEmail,
+              subject: `Application withdrawn for ${String(jobProfile?.title || 'your job posting')}`,
+              templateKey: 'application_withdrawal_employer_notice',
+              category: 'employer_communications',
+              template: [
+                'Hi {{employer_name}},',
+                '',
+                '{{applicant_name}} has withdrawn their application for {{job_title}}.',
+                '',
+                '— The RecruitFriend team',
+              ].join('\n'),
+              templateVars: {
+                employer_name: String(employerProfile?.name || 'Hiring Manager'),
+                applicant_name: String(seekerProfile?.name || 'A candidate'),
+                job_title: String(jobProfile?.title || 'your job posting'),
+              },
+            });
+            emailDelivery.employer = result.status;
+          } catch (withdrawalEmailError) {
+            console.error('Employer withdrawal notice failed:', withdrawalEmailError);
+            emailDelivery.employer = 'failed';
+          }
+        } else if (jobProfile?.employer_id) {
+          console.warn('Skipping employer withdrawal notice: no resolvable recipient email', {
+            applicationId: application.id,
+            employerId: jobProfile.employer_id,
+          });
+          await writeEmailLog(db, {
+            eventType: 'application.withdrawal_employer_notice',
+            eventKey: `app-withdrawal:employer:${application.id}`,
+            category: 'employer_communications',
+            recipientEmail: 'unresolved',
+            subject: `Application withdrawn for ${String(jobProfile?.title || 'your job posting')}`,
+            templateKey: 'application_withdrawal_employer_notice',
+            templateVars: {},
+            status: 'suppressed',
+            errorMessage: 'No resolvable recipient email',
+          });
+          emailDelivery.employer = 'skipped';
+        }
+      } catch (withdrawalNotifyError) {
+        console.error('Withdrawal notification error:', withdrawalNotifyError);
+      }
+    }
+
+    return c.json({ application, emailDelivery });
   } catch (error) {
     console.error('Update application error:', error);
     return c.json({ error: 'Failed to update application' }, 500);
@@ -1857,7 +2291,7 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
 
 app.post('/make-server-bca21fd3/employer/onboarding/submissions', async (c) => {
   try {
-    const auth = await requireEmployer(c.req.header('Authorization'));
+    const auth = await requireEmployer(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2013,7 +2447,7 @@ app.post('/make-server-bca21fd3/employer/onboarding/submissions', async (c) => {
 
 app.get('/make-server-bca21fd3/employer/onboarding/status', async (c) => {
   try {
-    const auth = await requireEmployer(c.req.header('Authorization'));
+    const auth = await requireEmployer(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2065,7 +2499,7 @@ app.get('/make-server-bca21fd3/employer/onboarding/status', async (c) => {
 
 app.get('/make-server-bca21fd3/admin/onboarding/queue', async (c) => {
   try {
-    const auth = await requireAdmin(c.req.header('Authorization'));
+    const auth = await requireAdmin(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const statusFilter = String(c.req.query('status') || '').trim().toLowerCase();
@@ -2124,7 +2558,7 @@ app.get('/make-server-bca21fd3/admin/onboarding/queue', async (c) => {
 
 app.get('/make-server-bca21fd3/admin/onboarding/queue/:employerId', async (c) => {
   try {
-    const auth = await requireAdmin(c.req.header('Authorization'));
+    const auth = await requireAdmin(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const employerId = c.req.param('employerId');
@@ -2165,7 +2599,7 @@ app.get('/make-server-bca21fd3/admin/onboarding/queue/:employerId', async (c) =>
 
 app.post('/make-server-bca21fd3/admin/onboarding/:employerId/decision', async (c) => {
   try {
-    const auth = await requireAdmin(c.req.header('Authorization'));
+    const auth = await requireAdmin(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const employerId = c.req.param('employerId');
@@ -2327,7 +2761,7 @@ app.post('/make-server-bca21fd3/admin/onboarding/:employerId/decision', async (c
 
 app.post('/make-server-bca21fd3/referrals', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const { refereeEmail } = await c.req.json();
@@ -2397,7 +2831,7 @@ app.post('/make-server-bca21fd3/referrals', async (c) => {
 
 app.get('/make-server-bca21fd3/referrals/my', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2430,7 +2864,8 @@ app.get('/make-server-bca21fd3/referrals/my', async (c) => {
 
 app.post('/make-server-bca21fd3/email/team-invites/send', async (c) => {
   try {
-    const auth = await requireApprovedEmployer(c.req.header('Authorization'));
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const body = await c.req.json();
@@ -2489,7 +2924,7 @@ app.post('/make-server-bca21fd3/email/team-invites/send', async (c) => {
 
 app.get('/make-server-bca21fd3/alerts', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2509,7 +2944,7 @@ app.get('/make-server-bca21fd3/alerts', async (c) => {
 
 app.post('/make-server-bca21fd3/alerts', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const { keywords, location, minSalary, frequency, types, active } = await c.req.json();
@@ -2547,7 +2982,7 @@ app.post('/make-server-bca21fd3/alerts', async (c) => {
 
 app.put('/make-server-bca21fd3/alerts/:id', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const id = c.req.param('id');
@@ -2589,7 +3024,7 @@ app.put('/make-server-bca21fd3/alerts/:id', async (c) => {
 
 app.delete('/make-server-bca21fd3/alerts/:id', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const id = c.req.param('id');
@@ -2606,7 +3041,7 @@ app.delete('/make-server-bca21fd3/alerts/:id', async (c) => {
 
 app.post('/make-server-bca21fd3/alerts/dispatch', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2709,7 +3144,7 @@ app.post('/make-server-bca21fd3/alerts/dispatch', async (c) => {
 
 app.get('/make-server-bca21fd3/cv/settings', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2725,7 +3160,7 @@ app.get('/make-server-bca21fd3/cv/settings', async (c) => {
 
 app.put('/make-server-bca21fd3/cv/settings', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const { template, visibility } = await c.req.json();
@@ -2751,7 +3186,7 @@ app.put('/make-server-bca21fd3/cv/settings', async (c) => {
 
 app.post('/make-server-bca21fd3/cv/settings/sync', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const now = new Date().toISOString();
@@ -2776,7 +3211,7 @@ app.post('/make-server-bca21fd3/cv/settings/sync', async (c) => {
 
 app.get('/make-server-bca21fd3/cv/files', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const db = getDb();
@@ -2796,18 +3231,28 @@ app.get('/make-server-bca21fd3/cv/files', async (c) => {
 
 app.post('/make-server-bca21fd3/cv/files', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
-    const { fileName, size } = await c.req.json();
+    const { fileName, size, storageBucket, storagePath, mimeType } = await c.req.json();
     if (!fileName || typeof fileName !== 'string') {
       return c.json({ error: 'fileName is required' }, 400);
+    }
+    if (!storagePath || typeof storagePath !== 'string') {
+      return c.json({ error: 'storagePath is required' }, 400);
     }
 
     const db = getDb();
     const { data, error } = await db
       .from('cv_files')
-      .insert({ seeker_id: auth.user.id, file_name: fileName, file_size: Number(size) || 0 })
+      .insert({
+        seeker_id: auth.user.id,
+        file_name: fileName,
+        file_size: Number(size) || 0,
+        storage_bucket: String(storageBucket || 'seeker-cvs'),
+        storage_path: String(storagePath),
+        mime_type: mimeType ? String(mimeType) : null,
+      })
       .select()
       .single();
 
@@ -2821,12 +3266,23 @@ app.post('/make-server-bca21fd3/cv/files', async (c) => {
 
 app.put('/make-server-bca21fd3/cv/files/:id', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const id = c.req.param('id');
     const { fileName, size } = await c.req.json();
     const db = getDb();
+
+    const { data: existingFile, error: existingError } = await db
+      .from('cv_files')
+      .select('id, seeker_id, storage_bucket, storage_path')
+      .eq('id', id)
+      .eq('seeker_id', auth.user.id)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existingFile) return c.json({ error: 'CV file not found' }, 404);
+
     const { data, error } = await db
       .from('cv_files')
       .update({
@@ -2849,7 +3305,7 @@ app.put('/make-server-bca21fd3/cv/files/:id', async (c) => {
 
 app.delete('/make-server-bca21fd3/cv/files/:id', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const id = c.req.param('id');
@@ -2872,7 +3328,7 @@ app.delete('/make-server-bca21fd3/cv/files/:id', async (c) => {
 
 app.post('/make-server-bca21fd3/subscriptions/change', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const { plan } = await c.req.json();
@@ -2901,7 +3357,7 @@ app.post('/make-server-bca21fd3/subscriptions/change', async (c) => {
 
 app.post('/make-server-bca21fd3/subscriptions/trial', async (c) => {
   try {
-    const auth = await requireSeeker(c.req.header('Authorization'));
+    const auth = await requireSeeker(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!auth.user) return c.json({ error: auth.error }, auth.code);
 
     const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -2926,7 +3382,7 @@ app.post('/make-server-bca21fd3/subscriptions/trial', async (c) => {
 // Save job
 app.post('/make-server-bca21fd3/saved-jobs', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const { jobId } = await c.req.json();
@@ -2944,7 +3400,7 @@ app.post('/make-server-bca21fd3/saved-jobs', async (c) => {
 // Get saved jobs
 app.get('/make-server-bca21fd3/saved-jobs', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const db = getDb();
@@ -2966,7 +3422,7 @@ app.get('/make-server-bca21fd3/saved-jobs', async (c) => {
 // Get saved jobs count
 app.get('/make-server-bca21fd3/saved-jobs/count', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const db = getDb();
@@ -2986,7 +3442,7 @@ app.get('/make-server-bca21fd3/saved-jobs/count', async (c) => {
 // Delete saved job
 app.delete('/make-server-bca21fd3/saved-jobs/:jobId', async (c) => {
   try {
-    const user = await getAuthUser(c.req.header('Authorization'));
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
     const jobId = c.req.param('jobId');
@@ -3004,7 +3460,7 @@ app.delete('/make-server-bca21fd3/saved-jobs/:jobId', async (c) => {
 // ============== PROFILE VIEWS (stub) ==============
 
 app.get('/make-server-bca21fd3/profile/views', async (c) => {
-  const user = await getAuthUser(c.req.header('Authorization'));
+  const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   return c.json({ views: 0 });
 });
