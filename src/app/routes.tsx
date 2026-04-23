@@ -35,7 +35,6 @@ import Signup from './pages/Signup';
 import VerifyEmail from './pages/VerifyEmail';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
-import EmployerInfo from './pages/EmployerInfo';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
@@ -50,7 +49,6 @@ export const router = createBrowserRouter([
       { path: 'jobs', Component: JobSearch },
       { path: 'jobs/:id', Component: JobDetail },
       { path: 'community', Component: CommunityBlogs },
-      { path: 'for-companies', Component: EmployerInfo },
       { path: 'login', Component: Login },
       { path: 'signup', Component: Signup },
       { path: 'verify-email', Component: VerifyEmail },

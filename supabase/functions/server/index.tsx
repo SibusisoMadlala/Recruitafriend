@@ -1241,6 +1241,7 @@ app.get('/make-server-bca21fd3/jobs', async (c) => {
       .from('jobs')
       .select('*', { count: 'exact' })
       .eq('status', 'active')
+      .eq('is_visible', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -1311,6 +1312,7 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
       .single();
 
     if (error || !job) return c.json({ error: 'Job not found' }, 404);
+    if (!job.is_visible || job.status !== 'active') return c.json({ error: 'Job not found' }, 404);
 
     let employer: Record<string, unknown> | null = null;
     if (job.employer_id) {
@@ -1453,7 +1455,8 @@ app.get('/make-server-bca21fd3/employer/stats', async (c) => {
       .from('jobs')
       .select('*', { count: 'exact', head: true })
       .eq('employer_id', auth.user.id)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('is_visible', true);
 
     const { data: employerJobs } = await db
       .from('jobs')

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
-import { Filter, MoreHorizontal, Eye, Users, Briefcase, Trash2, PauseCircle, PlayCircle, Edit } from 'lucide-react';
+import { Filter, Eye, EyeOff, Users, Briefcase, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -24,6 +24,7 @@ interface Listing {
   city: string | null;
   province: string | null;
   status: 'active' | 'closed' | 'draft';
+  is_visible?: boolean;
   views: number;
   apps: number;
   created_at: string;
@@ -35,7 +36,6 @@ export default function MyListings() {
   const [search, setSearch] = useState('');
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionJobId, setActionJobId] = useState<string | null>(null);
   const [deleteListingId, setDeleteListingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,14 +54,14 @@ export default function MyListings() {
     }
   }
 
-  async function toggleStatus(job: Listing) {
-    const next = job.status === 'active' ? 'closed' : 'active';
+  async function toggleVisibility(job: Listing) {
+    const next = !(job.is_visible ?? true);
     try {
-      await apiCall(`/jobs/${job.id}`, { method: 'PUT', body: JSON.stringify({ status: next }) });
-      setListings(prev => prev.map(l => l.id === job.id ? { ...l, status: next as Listing['status'] } : l));
-      toast.success(`Listing ${next === 'active' ? 'activated' : 'paused'}`);
+      await apiCall(`/jobs/${job.id}`, { method: 'PUT', body: JSON.stringify({ is_visible: next }) });
+      setListings(prev => prev.map(l => l.id === job.id ? { ...l, is_visible: next } : l));
+      toast.success(`Listing is now ${next ? 'visible' : 'hidden'}`);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update listing');
+      toast.error(err.message || 'Failed to update listing visibility');
     }
   }
 
@@ -160,6 +160,9 @@ export default function MyListings() {
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${getStatusStyle(job.status)}`}>
                       {job.status}
                     </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${(job.is_visible ?? true) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-700'}`}>
+                      {(job.is_visible ?? true) ? 'visible' : 'hidden'}
+                    </span>
                   </div>
                   <div className="flex gap-3 mt-1 text-sm text-gray-500 flex-wrap">
                     {job.employment_type && <span>{job.employment_type}</span>}
@@ -195,12 +198,12 @@ export default function MyListings() {
                     variant="ghost"
                     size="sm"
                     className="text-gray-500 hover:text-[#0A2540]"
-                    title={job.status === 'active' ? 'Pause listing' : 'Activate listing'}
-                    onClick={() => toggleStatus(job)}
+                    title={(job.is_visible ?? true) ? 'Hide listing from job seekers' : 'Show listing to job seekers'}
+                    onClick={() => toggleVisibility(job)}
                   >
-                    {job.status === 'active'
-                      ? <PauseCircle className="w-4 h-4" />
-                      : <PlayCircle className="w-4 h-4 text-green-600" />
+                    {(job.is_visible ?? true)
+                      ? <EyeOff className="w-4 h-4" />
+                      : <Eye className="w-4 h-4 text-green-600" />
                     }
                   </Button>
                   <Button

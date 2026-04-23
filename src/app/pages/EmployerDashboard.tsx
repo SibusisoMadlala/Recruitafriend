@@ -36,7 +36,7 @@ export default function EmployerDashboard() {
           apiCall('/employer/jobs'),
         ]);
         setStatsData({ activeListings: count, totalApplications, shortlisted, interviewsToday, cvViews });
-        setActiveListings((jobs || []).filter((j: any) => j.status === 'active').slice(0, 5));
+        setActiveListings((jobs || []).filter((j: any) => j.status === 'active' && j.is_visible === true).slice(0, 5));
       } catch (err) {
         console.error('Failed to load employer dashboard data:', err);
       } finally {

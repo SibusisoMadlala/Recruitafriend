@@ -28,7 +28,6 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
 
   const navItems = useMemo(
     () => [
-      ...(!user ? [{ to: '/for-companies', label: 'For Companies' }] : []),
       { to: '/community', label: 'Community' },
       ...(user ? [{ to: dashboardPath, label: 'Dashboard' }] : []),
     ],

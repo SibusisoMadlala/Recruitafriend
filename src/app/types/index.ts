@@ -70,6 +70,7 @@ export interface Job {
     prompt: string;
     duration?: string;
   }>;
+  is_visible?: boolean;
   status: 'active' | 'closed' | 'draft';
   views: number;
   created_at: string;

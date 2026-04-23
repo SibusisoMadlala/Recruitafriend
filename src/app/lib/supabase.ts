@@ -306,9 +306,9 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   // To avoid breaking authenticated features, we intercept and run native equivalent queries here.
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/stats')) {
     await assertApprovedEmployer(effectiveUser.id);
-    const { data: jobs } = await supabase.from('jobs').select('id, status').eq('employer_id', effectiveUser.id);
+    const { data: jobs } = await supabase.from('jobs').select('id, status, is_visible').eq('employer_id', effectiveUser.id);
     const jobIds = (jobs || []).map((j: Record<string, unknown>) => j.id as string);
-    const activeListings = (jobs || []).filter((j: Record<string, unknown>) => j.status === 'active').length;
+    const activeListings = (jobs || []).filter((j: Record<string, unknown>) => j.status === 'active' && j.is_visible === true).length;
     let totalApplications = 0;
     let shortlisted = 0;
     if (jobIds.length > 0) {
@@ -950,6 +950,9 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (requestBody.status && allowedStatuses.includes(String(requestBody.status))) {
       payload.status = requestBody.status;
+    }
+    if (requestBody.is_visible !== undefined) {
+      payload.is_visible = Boolean(requestBody.is_visible);
     }
     if (requestBody.title !== undefined) payload.title = requestBody.title;
     if (requestBody.description !== undefined) payload.description = requestBody.description;
