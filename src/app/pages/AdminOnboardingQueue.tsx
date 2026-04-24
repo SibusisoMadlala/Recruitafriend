@@ -288,7 +288,7 @@ export default function AdminOnboardingQueue() {
               <label className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2">
                 <span>
                   <span className="block font-medium text-[#0A2540]">Hide company name & logo</span>
-                  <span className="block text-xs text-gray-500">Shows company as “Confidential” and hides logo in seeker-facing areas.</span>
+                  <span className="block text-xs text-gray-500">Shows company as “RecruitFriend” and hides logo in seeker-facing areas.</span>
                 </span>
                 <input
                   type="checkbox"

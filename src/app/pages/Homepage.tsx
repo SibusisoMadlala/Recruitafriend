@@ -244,8 +244,7 @@ export default function Homepage() {
                   <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-2">{job.title}</h3>
                   <div className="flex flex-wrap items-center gap-2 text-[var(--rf-muted)] text-sm">
                     <Building2 className="w-4 h-4" />
-                  <span>{(() => { const s = (job?.employer?.social_links && typeof job.employer.social_links === 'object') ? job.employer.social_links as Record<string, any> : {}; const m = (s.employer && typeof s.employer === 'object') ? s.employer as Record<string, any> : {}; return m.hideCompanyName ? 'Confidential' : (job.company || 'Company Name'); })()}</span>
-                                      <span>{resolveCompanyName(job?.employer, job?.company || 'Company Name')}</span>
+                    <span>{resolveCompanyName(job?.employer, job?.company || 'Company Name')}</span>
                     <CheckCircle className="w-4 h-4 text-[var(--rf-green)]" />
                   </div>
                 </div>

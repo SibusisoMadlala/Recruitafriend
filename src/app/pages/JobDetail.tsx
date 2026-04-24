@@ -268,7 +268,7 @@ export default function JobDetail() {
   const hideWebsite = Boolean(employerMeta.hideWebsite);
 
   const companyName = hideCompanyName
-    ? 'Confidential'
+    ? 'RecruitFriend'
     : String(
         employer.name
           || employerSocial.company_name

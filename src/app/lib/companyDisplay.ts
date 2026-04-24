@@ -17,7 +17,7 @@ function getHideFlags(employer: any): { hideCompanyName: boolean; hideWebsite: b
 /** Returns the display name for a company, respecting hideCompanyName. */
 export function resolveCompanyName(employer: any, fallback = 'Hiring Company'): string {
   const { hideCompanyName } = getHideFlags(employer);
-  if (hideCompanyName) return 'Confidential';
+  if (hideCompanyName) return 'RecruitFriend';
   return String(employer?.name || fallback).trim();
 }
 
@@ -39,7 +39,7 @@ export function resolveAppCompanyName(app: { company?: string; job?: { employer?
   const employer = app.job?.employer;
   if (employer) {
     const { hideCompanyName } = getHideFlags(employer);
-    if (hideCompanyName) return 'Confidential';
+    if (hideCompanyName) return 'RecruitFriend';
   }
   return app.company || 'Company';
 }
