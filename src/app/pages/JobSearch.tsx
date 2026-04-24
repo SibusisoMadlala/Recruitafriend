@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { Search, MapPin, DollarSign, Briefcase, Building2, Heart, CheckCircle, SlidersHorizontal } from 'lucide-react';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
+import { resolveCompanyName, resolveCompanyLogo } from '../lib/companyDisplay';
 
 const jobTypes = ['Full-time', 'Part-time', 'Contract', 'Internship'];
 const experienceLevels = ['Entry Level', 'Mid Level', 'Senior Level', 'Executive'];
@@ -226,8 +227,8 @@ export default function JobSearch() {
               <div className="space-y-4">
                 {jobs.map((job) => (
                   (() => {
-                    const companyName = String(job?.employer?.name || job?.company || 'Hiring Company').trim();
-                    const companyLogo = String(job?.employer?.avatar_url || '').trim();
+                    const companyName = resolveCompanyName(job?.employer, job?.company || 'Hiring Company');
+                    const companyLogo = resolveCompanyLogo(job?.employer);
                     const jobLocationLabel = String(job?.location || [job?.city, job?.province].filter(Boolean).join(', ') || 'South Africa').trim();
                     const employmentTypeLabel = String(job?.employment_type || job?.jobType || 'Full-time').trim();
                     const postedAtRaw = job?.created_at || job?.createdAt;

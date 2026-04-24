@@ -29,6 +29,9 @@ export default function AdminOnboardingQueue() {
   const [detail, setDetail] = useState<QueueDetail | null>(null);
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [decisionReason, setDecisionReason] = useState('');
+  const [hideCompanyName, setHideCompanyName] = useState(false);
+  const [hideWebsite, setHideWebsite] = useState(false);
+  const [visibilityLoading, setVisibilityLoading] = useState(false);
 
   async function loadQueue() {
     setLoading(true);
@@ -63,6 +66,18 @@ export default function AdminOnboardingQueue() {
     })();
   }, [selectedEmployerId]);
 
+  useEffect(() => {
+    const social = (detail?.employer?.social_links && typeof detail.employer.social_links === 'object')
+      ? detail.employer.social_links as Record<string, any>
+      : {};
+    const employerMeta = (social.employer && typeof social.employer === 'object')
+      ? social.employer as Record<string, any>
+      : {};
+
+    setHideCompanyName(Boolean(employerMeta.hideCompanyName));
+    setHideWebsite(Boolean(employerMeta.hideWebsite));
+  }, [detail]);
+
   const selectedRow = useMemo(
     () => rows.find((row) => row.employer_id === selectedEmployerId) || null,
     [rows, selectedEmployerId]
@@ -91,6 +106,44 @@ export default function AdminOnboardingQueue() {
       toast.error(error.message || 'Failed to apply decision');
     } finally {
       setDecisionLoading(false);
+    }
+  }
+
+  async function saveVisibilitySettings() {
+    if (!selectedEmployerId) return;
+
+    setVisibilityLoading(true);
+    try {
+      const payload = await apiCall(`/admin/employers/${selectedEmployerId}/visibility`, {
+        requireAuth: true,
+        method: 'POST',
+        body: JSON.stringify({
+          hideCompanyName,
+          hideWebsite,
+        }),
+      });
+
+      const social = (payload?.profile?.social_links && typeof payload.profile.social_links === 'object')
+        ? payload.profile.social_links as Record<string, any>
+        : (detail?.employer?.social_links && typeof detail.employer.social_links === 'object')
+          ? detail.employer.social_links as Record<string, any>
+          : {};
+
+      setDetail((prev) => prev
+        ? {
+            ...prev,
+            employer: {
+              ...(prev.employer || {}),
+              social_links: social,
+            },
+          }
+        : prev);
+
+      toast.success('Visibility settings updated');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update visibility settings');
+    } finally {
+      setVisibilityLoading(false);
     }
   }
 
@@ -228,6 +281,46 @@ export default function AdminOnboardingQueue() {
                 onChange={(e) => setDecisionReason(e.target.value)}
                 placeholder="Provide decision rationale or remediation guidance"
               />
+            </div>
+
+            <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm space-y-3">
+              <p className="font-semibold text-[#0A2540]">Public company visibility controls</p>
+              <label className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2">
+                <span>
+                  <span className="block font-medium text-[#0A2540]">Hide company name & logo</span>
+                  <span className="block text-xs text-gray-500">Shows company as “Confidential” and hides logo in seeker-facing areas.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={hideCompanyName}
+                  onChange={(e) => setHideCompanyName(e.target.checked)}
+                  disabled={visibilityLoading}
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2">
+                <span>
+                  <span className="block font-medium text-[#0A2540]">Hide company website</span>
+                  <span className="block text-xs text-gray-500">Removes website links from seeker-facing views.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={hideWebsite}
+                  onChange={(e) => setHideWebsite(e.target.checked)}
+                  disabled={visibilityLoading}
+                />
+              </label>
+
+              <button
+                type="button"
+                className="rounded border border-blue-300 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                disabled={visibilityLoading}
+                onClick={() => void saveVisibilitySettings()}
+              >
+                {visibilityLoading ? 'Saving visibility...' : 'Save visibility settings'}
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

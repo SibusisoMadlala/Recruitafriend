@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { apiCall } from '../lib/supabase';
 import type { Application, Job } from '../types';
+import { resolveAppCompanyName, resolveCompanyName } from '../lib/companyDisplay';
 import {
   ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight
 } from 'lucide-react';
@@ -79,7 +80,7 @@ export default function SeekerDashboard() {
       .map((app) => ({
         id: app.id,
         role: app.job_title || 'Interview',
-        company: app.company || 'Company',
+        company: resolveAppCompanyName(app),
         date: 'Check your email for schedule',
       }));
   }, [applications]);
@@ -184,11 +185,11 @@ export default function SeekerDashboard() {
                     <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-[var(--rf-radius-md)] border border-gray-100 hover:border-gray-200 transition-colors">
                         <div className="flex items-center">
                             <div className="w-10 h-10 bg-white rounded flex items-center justify-center font-bold text-gray-700 shadow-sm mr-3">
-                                {app.company?.charAt(0) || 'C'}
+                                {resolveAppCompanyName(app).charAt(0).toUpperCase()}
                             </div>
                             <div>
                                 <h5 className="font-semibold text-[var(--rf-navy)] text-sm">{app.job_title}</h5>
-                                <p className="text-xs text-[var(--rf-muted)]">{app.company} • Applied 2 days ago</p>
+                                <p className="text-xs text-[var(--rf-muted)]">{resolveAppCompanyName(app)} • Applied 2 days ago</p>
                             </div>
                         </div>
                         <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full capitalize">
@@ -267,14 +268,14 @@ export default function SeekerDashboard() {
               <Link to={`/jobs/${job.id}`} key={job.id} className="min-w-[280px] bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 border border-transparent hover:border-[var(--rf-green)] transition-all cursor-pointer group">
                     <div className="flex justify-between items-start mb-3">
                         <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-[var(--rf-navy)]">
-                    {(job.employer?.name || 'C').charAt(0)}
+                    {resolveCompanyName(job?.employer, job?.company || 'C').charAt(0).toUpperCase()}
                         </div>
                         <span className="text-xs font-bold text-[var(--rf-green)] bg-green-50 px-2 py-1 rounded-full">
                     Recommended
                         </span>
                     </div>
                     <h4 className="font-bold text-[var(--rf-navy)] mb-1 group-hover:text-[var(--rf-green)] transition-colors">{job.title}</h4>
-                <p className="text-sm text-gray-500 mb-3">{job.employer?.name || 'Company'}</p>
+                <p className="text-sm text-gray-500 mb-3">{resolveCompanyName(job?.employer, job?.company || 'Company')}</p>
                     <div className="flex items-center text-xs text-gray-400 mb-4">
                   {[job.city, job.province].filter(Boolean).join(', ') || 'South Africa'}
                     </div>

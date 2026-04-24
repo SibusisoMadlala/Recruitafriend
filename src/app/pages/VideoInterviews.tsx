@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { apiCall } from '../lib/supabase';
 import type { Application } from '../types';
+import { resolveAppCompanyName } from '../lib/companyDisplay';
 
 const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
 
@@ -138,7 +139,7 @@ export default function VideoInterviews() {
                     <div key={interview.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 border-l-4 border-[var(--rf-navy)] flex flex-col md:flex-row md:items-center justify-between gap-4">
                        <div>
                         <h3 className="font-bold text-[var(--rf-navy)] text-lg">{interview.job_title || 'Interview'}</h3>
-                        <p className="text-sm text-[var(--rf-muted)] mb-2">{interview.company || 'Company'}</p>
+                        <p className="text-sm text-[var(--rf-muted)] mb-2">{resolveAppCompanyName(interview)}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <Calendar className="w-3 h-3 mr-1" />
                           {scheduleLabel}
@@ -182,7 +183,7 @@ export default function VideoInterviews() {
                     <div key={interview.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 border-l-4 border-purple-500 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <h3 className="font-bold text-[var(--rf-navy)] text-lg">{interview.job_title || 'On-demand interview'}</h3>
-                        <p className="text-sm text-[var(--rf-muted)] mb-2">{interview.company || 'Company'}</p>
+                        <p className="text-sm text-[var(--rf-muted)] mb-2">{resolveAppCompanyName(interview)}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <Clock className="w-3 h-3 mr-1" />
                           Complete your prep and response steps

@@ -24,6 +24,8 @@ type EmployerMeta = {
    dayInLife: string;
    bbbeeLevel: string;
    bbbeeVerified: boolean;
+   hideCompanyName: boolean;
+   hideWebsite: boolean;
 };
 
 type CompanyForm = {
@@ -45,6 +47,8 @@ type CompanyForm = {
    dayInLife: string;
    bbbeeLevel: string;
    bbbeeVerified: boolean;
+   hideCompanyName: boolean;
+   hideWebsite: boolean;
 };
 
 const defaultEmployerMeta: EmployerMeta = {
@@ -56,6 +60,8 @@ const defaultEmployerMeta: EmployerMeta = {
    dayInLife: '',
    bbbeeLevel: 'not-rated',
    bbbeeVerified: false,
+   hideCompanyName: false,
+   hideWebsite: false,
 };
 
 const presetCultureTags = ['Remote-friendly', 'Flexible hours', 'Learning & Dev', 'Diversity focused', 'Wellness benefits'];
@@ -118,6 +124,8 @@ export default function EmployerProfile() {
          dayInLife: employer.dayInLife || '',
          bbbeeLevel: employer.bbbeeLevel || 'not-rated',
          bbbeeVerified: Boolean(employer.bbbeeVerified),
+         hideCompanyName: Boolean(employer.hideCompanyName),
+         hideWebsite: Boolean(employer.hideWebsite),
       });
    }, [profile]);
 
@@ -206,6 +214,8 @@ export default function EmployerProfile() {
          dayInLife: form.dayInLife.trim(),
          bbbeeLevel: form.bbbeeLevel,
          bbbeeVerified: form.bbbeeVerified,
+         hideCompanyName: form.hideCompanyName,
+         hideWebsite: form.hideWebsite,
       };
 
       const nextSocialLinks = {
@@ -421,8 +431,16 @@ export default function EmployerProfile() {
                           placeholder="e.g. Acme Corp"
                           value={form.name}
                           onChange={(e) => updateForm('name', e.target.value)}
-                        />
-                     </div>
+                        />                        <div className="flex items-center gap-2 pt-1">
+                           <Switch
+                              id="hide-company-name"
+                              checked={form.hideCompanyName}
+                              onCheckedChange={(v) => updateForm('hideCompanyName', v)}
+                           />
+                           <Label htmlFor="hide-company-name" className="text-xs text-gray-500 cursor-pointer">
+                              Hide company name from candidates
+                           </Label>
+                        </div>                     </div>
                      <div className="space-y-2">
                         <Label>Registration Number</Label>
                         <Input
@@ -475,6 +493,16 @@ export default function EmployerProfile() {
                                            value={form.website}
                                            onChange={(e) => updateForm('website', e.target.value)}
                                         />
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <Switch
+                              id="hide-website"
+                              checked={form.hideWebsite}
+                              onCheckedChange={(v) => updateForm('hideWebsite', v)}
+                           />
+                           <Label htmlFor="hide-website" className="text-xs text-gray-500 cursor-pointer">
+                              Hide website from candidates
+                           </Label>
                         </div>
                         <div className="relative">
                            <Linkedin className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />

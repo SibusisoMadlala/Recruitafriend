@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { apiCall } from '../lib/supabase';
 import type { Application } from '../types';
+import { resolveAppCompanyName } from '../lib/companyDisplay';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -147,11 +148,11 @@ export default function SeekerApplications() {
                   <td className="py-4 px-6">
                     <div className="flex items-center">
                       <div className="w-10 h-10 rounded-md bg-[var(--rf-navy)] text-white flex items-center justify-center font-bold mr-3">
-                        {app.company?.charAt(0) || 'C'}
+                        {resolveAppCompanyName(app).charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <div className="font-bold text-[var(--rf-navy)]">{app.job_title || 'Untitled role'}</div>
-                        <div className="text-sm text-[var(--rf-muted)]">{app.company}</div>
+                        <div className="text-sm text-[var(--rf-muted)]">{resolveAppCompanyName(app)}</div>
                       </div>
                     </div>
                   </td>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { apiCall } from '../lib/supabase';
+import { resolveHideWebsite } from '../lib/companyDisplay';
 import { toast } from 'sonner';
 import {
   MapPin, DollarSign, Briefcase, Calendar, Clock, Building2,
@@ -263,13 +264,18 @@ export default function JobDetail() {
     ? employerSocial.employer
     : {};
 
-  const companyName = String(
-    employer.name
-      || employerSocial.company_name
-      || employerSocial.companyName
-      || job.company
-      || 'Hiring Company'
-  ).trim();
+  const hideCompanyName = Boolean(employerMeta.hideCompanyName);
+  const hideWebsite = Boolean(employerMeta.hideWebsite);
+
+  const companyName = hideCompanyName
+    ? 'Confidential'
+    : String(
+        employer.name
+          || employerSocial.company_name
+          || employerSocial.companyName
+          || job.company
+          || 'Hiring Company'
+      ).trim();
   const companyHeadline = String(employer.headline || '').trim();
   const companySummary = String(employer.summary || '').trim();
   const companyIndustry = String(employerMeta.industry || job.industry || '').trim();
@@ -290,14 +296,14 @@ export default function JobDetail() {
   const companyLocations = Array.from(new Set([primaryLocation, ...rawLocations].filter(Boolean)));
 
   const companyLinks = [
-    { label: 'Website', url: normalizeUrl(employerSocial.website) },
+    { label: 'Website', url: hideWebsite ? '' : normalizeUrl(employerSocial.website) },
     { label: 'LinkedIn', url: normalizeUrl(employerSocial.linkedin) },
     { label: 'Facebook', url: normalizeUrl(employerSocial.facebook) },
     { label: 'Instagram', url: normalizeUrl(employerSocial.instagram) },
     { label: 'X / Twitter', url: normalizeUrl(employerSocial.twitter) },
   ].filter((item) => item.url);
 
-  const companyLogo = String(
+  const companyLogo = hideCompanyName ? '' : String(
     employer.avatar_url
       || employerSocial.logo
       || employerSocial.logoUrl

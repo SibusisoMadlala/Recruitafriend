@@ -2582,7 +2582,7 @@ app.get('/make-server-bca21fd3/admin/onboarding/queue/:employerId', async (c) =>
         .order('created_at', { ascending: false }),
       db
         .from('profiles')
-        .select('id, name, email, employer_status, reviewed_at, reviewed_by')
+        .select('id, name, email, employer_status, reviewed_at, reviewed_by, social_links')
         .eq('id', employerId)
         .maybeSingle(),
     ]);
@@ -2599,6 +2599,77 @@ app.get('/make-server-bca21fd3/admin/onboarding/queue/:employerId', async (c) =>
     return c.json({ error: 'Failed to load onboarding detail' }, 500);
   }
 });
+
+const updateEmployerVisibility = async (c: any) => {
+  try {
+    const auth = await requireAdmin(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!auth.user) return c.json({ error: auth.error }, auth.code);
+
+    const employerId = c.req.param('employerId');
+    const body = await c.req.json();
+    const hideCompanyName = Boolean(body?.hideCompanyName);
+    const hideWebsite = Boolean(body?.hideWebsite);
+    const db = getDb();
+
+    const { data: targetProfile, error: targetError } = await db
+      .from('profiles')
+      .select('id, user_type, social_links')
+      .eq('id', employerId)
+      .maybeSingle();
+
+    if (targetError) throw targetError;
+    if (!targetProfile) return c.json({ error: 'Employer not found' }, 404);
+    if (String(targetProfile.user_type || '').toLowerCase() !== 'employer') {
+      return c.json({ error: 'Target profile is not an employer account' }, 400);
+    }
+
+    const social = (targetProfile.social_links && typeof targetProfile.social_links === 'object')
+      ? targetProfile.social_links as Record<string, unknown>
+      : {};
+
+    const employerMeta = (social.employer && typeof social.employer === 'object')
+      ? social.employer as Record<string, unknown>
+      : {};
+
+    const nextSocialLinks: Record<string, unknown> = {
+      ...social,
+      employer: {
+        ...employerMeta,
+        hideCompanyName,
+        hideWebsite,
+      },
+    };
+
+    const nowIso = new Date().toISOString();
+
+    const { data: updated, error: updateError } = await db
+      .from('profiles')
+      .update({
+        social_links: nextSocialLinks,
+        updated_at: nowIso,
+      })
+      .eq('id', employerId)
+      .select('id, social_links, updated_at')
+      .single();
+
+    if (updateError) throw updateError;
+
+    return c.json({
+      employerId,
+      visibility: {
+        hideCompanyName,
+        hideWebsite,
+      },
+      profile: updated,
+    });
+  } catch (error) {
+    console.error('Admin employer visibility update error:', error);
+    return c.json({ error: 'Failed to update employer visibility settings' }, 500);
+  }
+};
+
+app.patch('/make-server-bca21fd3/admin/employers/:employerId/visibility', updateEmployerVisibility);
+app.post('/make-server-bca21fd3/admin/employers/:employerId/visibility', updateEmployerVisibility);
 
 app.post('/make-server-bca21fd3/admin/onboarding/:employerId/decision', async (c) => {
   try {
