@@ -219,7 +219,7 @@ export default function Homepage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="flex items-center text-2xl font-bold text-[var(--rf-navy)] sm:text-3xl">
-              Hot Jobs Right Now 🔥
+              Hot Jobs Right Now
             </h2>
             <Link to="/jobs" className="text-[var(--rf-green)] hover:underline font-semibold">
               View All →

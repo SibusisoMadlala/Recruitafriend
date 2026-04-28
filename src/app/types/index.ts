@@ -156,6 +156,28 @@ export interface CVFile {
   updated_at: string;
 }
 
+export type CommunityBlogStatus = 'draft' | 'pending_review' | 'published' | 'rejected';
+
+export interface CommunityBlogPost {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt?: string | null;
+  content: string;
+  cover_image_url?: string | null;
+  status: CommunityBlogStatus;
+  featured: boolean;
+  published_at?: string | null;
+  author_id?: string | null;
+  author_name?: string | null;
+  submitter_id?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  review_notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
 export interface Referral {
   id: string;
   referrer_id: string;

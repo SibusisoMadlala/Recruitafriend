@@ -106,7 +106,7 @@ export default function SeekerDashboard() {
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[var(--rf-navy)] to-[#1a3a5f] text-white rounded-[var(--rf-radius-lg)] p-8 shadow-lg relative overflow-hidden">
         <div className="relative z-10">
-            <h2 className="text-3xl font-bold mb-2">{getGreeting()}, {profile?.name?.split(' ')[0] || 'User'}! 👋</h2>
+            <h2 className="text-3xl font-bold mb-2">{getGreeting()}, {profile?.name?.split(' ')[0] || 'User'}!</h2>
             <p className="opacity-90 max-w-xl">
             You have <span className="font-bold text-[var(--rf-green)]">{stats.profileViews} new profile views</span> this week. Complete your profile to get more visibility.
             </p>

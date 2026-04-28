@@ -30,7 +30,7 @@ export default function SeekerSubscriptions() {
       name: 'PREMIUM',
       price: 'R149',
       period: '/month',
-      badge: 'Most Popular 🔥',
+      badge: 'Most Popular',
       color: 'green',
       features: [
         { text: 'Everything in Free', included: true },

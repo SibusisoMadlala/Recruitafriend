@@ -653,7 +653,7 @@ export default function PostJob() {
                  {submitting ? (
                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Publishing...</>
                  ) : (
-                   'Publish Listing 🎉'
+                   'Publish Listing'
                  )}
                </Button>
              )}

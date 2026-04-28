@@ -74,7 +74,7 @@ Browse by Category:
   Creative & Design | Logistics
 
 Featured Jobs (scrollable row):
-- Section heading: "Hot Jobs Right Now 🔥"
+- Section heading: "Hot Jobs Right Now"
 - Cards: RecruitFriend logo watermark if no company logo, 
   Job title (bold), Company name + verified tick, 
   Location + Remote badge, Salary range, Job type pill, 
@@ -96,7 +96,7 @@ Footer:
 - Logo + tagline
 - Links: About | How It Works | Pricing | Blog | Contact | FAQ
 - Social: LinkedIn | Facebook | Instagram | Twitter/X
-- "Proudly South African 🇿🇦" | POPIA Compliant | © 2025 RecruitFriend
+- "Proudly South African" | POPIA Compliant | © 2025 RecruitFriend
 
 ---
 
@@ -151,26 +151,25 @@ SCREEN 3 — JOB LISTING DETAIL PAGE
 SCREEN 4 — JOB SEEKER DASHBOARD
 
 Left Sidebar (240px, navy background, white text):
-- RecruitFriend RF badge + "Hi, [First Name] 👋" 
+- RecruitFriend RF badge + "Hi, [First Name]" 
 - Profile completion ring (circular progress)
 - Nav items with icons:
-  🏠 Dashboard
-  👤 My Profile  
-  📄 My CV
-  🔔 Job Alerts
-  💼 Saved Jobs
-  📋 My Applications
-  🎥 Video Interviews
-  🤝 My Network
-  🎁 Referrals
-  ⭐ Subscription
-  ⚙️ Settings
-  🚪 Logout
+  Dashboard
+  My Profile  
+  My CV
+  Job Alerts
+  Saved Jobs
+  My Applications
+  Video Interviews
+  My Network
+  Referrals
+  Subscription
+  Settings
+  Logout
 - Bottom of sidebar: current plan badge (FREE / PREMIUM / PRO)
 
 Main Dashboard Area:
-- Top banner: "Good morning, Thabo! 👋 
-  You have 3 new profile views and 1 interview scheduled today."
+- Top banner: "Good morning, Thabo! You have 3 new profile views and 1 interview scheduled today."
   (warm orange accent background)
 - Stats row (4 metric cards):
   Applications Sent | Profile Views | Saved Jobs | 
@@ -198,9 +197,9 @@ SCREEN 5 — CANDIDATE PROFILE BUILDER
   Province, City, Nationality, SA ID (optional, padlocked icon)
 
   Professional Summary card:
-  Textarea with character count, "Need help? Use AI Assist ✨" link
+  Textarea with character count, "Need help? Use AI Assist" link
 
-  Video Introduction card ⭐:
+  Video Introduction card:
   - Camera illustration
   - "Record a 60-second video pitch to stand out from the crowd"
   - Record button (red dot) | Upload video button
@@ -235,7 +234,7 @@ SCREEN 5 — CANDIDATE PROFILE BUILDER
 
 SCREEN 6 — VIDEO INTERVIEW HUB (JOB SEEKER)
 
-Page header: "🎥 My Video Interviews"
+Page header: "My Video Interviews"
 Tabs: Upcoming | Completed | On-Demand Assessments
 
 UPCOMING tab:
@@ -264,15 +263,15 @@ IN-ROOM (full screen):
 - Self-view camera: bottom-right rounded square
 - Recording indicator: pulsing red dot + "REC 0:45"
 - Controls bar (bottom center):
-  🎤 Mute | 📷 Camera off | ⬅ Previous Q | ➡ Next Q | 
-  ✅ Submit Assessment (red, confirmation modal)
+  Mute | Camera off | Previous Q | Next Q | 
+  Submit Assessment (red, confirmation modal)
 - Progress dots at bottom: Q1 ● Q2 ● Q3 ○ Q4 ○ Q5 ○
 
 ---
 
 SCREEN 7 — SOCIAL & NETWORKING
 
-Page header: "🤝 My RecruitFriend Network"
+Page header: "My RecruitFriend Network"
 Tabs: My Connections | Suggested | Referrals | Community
 
 MY CONNECTIONS tab:
@@ -287,7 +286,7 @@ SUGGESTED tab:
   Shared skills tags, "Connect" green button, "Dismiss" ×
 - Filter chips: Same Industry | Same City | Same Skills
 
-REFERRALS tab ⭐:
+REFERRALS tab:
 - Hero card (green gradient):
   "Earn with RecruitFriend! Refer friends and get paid."
   Referral link box with Copy button + 
@@ -296,9 +295,9 @@ REFERRALS tab ⭐:
   R0 Pending | R150 Available | R350 Total Earned
   "Withdraw to Bank" button (min R100)
 - Rewards tier cards:
-  🥉 Friend Signs Up = R50 credit
-  🥈 Friend Gets Hired = R200 credit
-  🥇 Friend Posts a Job = R300 credit
+  Friend Signs Up = R50 credit
+  Friend Gets Hired = R200 credit
+  Friend Posts a Job = R300 credit
 - Referral history table: 
   Name, Date, Status (Signed Up / Hired / Job Posted), Reward
 
@@ -307,16 +306,16 @@ COMMUNITY tab:
   RF avatar | "Share a tip, win, or ask the community..." | 
   Post button | 📷 Image icon
 - Feed posts: Avatar, name, role, timestamp, post text, 
-  image optional, Like ❤️ | Comment 💬 | Share 🔄 actions
+  image optional, Like | Comment | Share actions
 - Right sidebar: Trending Topics | 🏆 Top Contributors
 
 ---
 
 SCREEN 8 — SUBSCRIPTION PLANS (JOB SEEKER)
 
-Page header: "⭐ Upgrade Your RecruitFriend Experience"
+Page header: "Upgrade Your RecruitFriend Experience"
 Subheading: "Get hired faster with premium RecruitFriend tools"
-Monthly / Annual toggle: "Annual — Save up to 33% 🎉"
+Monthly / Annual toggle: "Annual — Save up to 33%"
 
 3 plan cards:
 
@@ -332,7 +331,7 @@ R0 / month
 ✗ Referral earnings
 "Current Plan" grey button
 
-PREMIUM card (green border + "Most Popular 🔥" banner):
+PREMIUM card (green border + "Most Popular" banner):
 RF badge: green
 R149/month | R1,199/year
 ✓ Everything in Free
@@ -345,7 +344,7 @@ R149/month | R1,199/year
 ✓ Full referral programme
 "Upgrade to Premium" green button
 
-PROFESSIONAL card (navy border + gold crown icon):
+PROFESSIONAL card (navy border):
 RF badge: gold
 R299/month | R2,399/year
 ✓ Everything in Premium
@@ -354,12 +353,12 @@ R299/month | R2,399/year
 ✓ Career coach session (1/month)
 ✓ Interview prep toolkit
 ✓ Salary benchmarking (ZAR)
-✓ Featured profile badge 👑
+✓ Featured profile badge
 "Go Professional" navy button
 
 Payment row below cards:
 Visa | Mastercard | PayFast | Ozow | SnapScan logos
-"🔒 Secure checkout powered by PayFast"
+"Secure checkout powered by PayFast"
 "Cancel anytime. No hidden fees. POPIA compliant."
 
 ---
@@ -368,13 +367,13 @@ SCREEN 9 — EMPLOYER DASHBOARD
 
 Left Sidebar (navy):
 - Company logo circle + company name
-- Nav: 🏠 Dashboard | ➕ Post a Job | 📋 My Listings | 
-  👥 Applicants | 🎥 Video Interviews | 🔍 Talent Search | 
-  🏢 Company Profile | 📊 Analytics | ⭐ Subscription | ⚙️ Settings
+- Nav: Dashboard | Post a Job | My Listings | 
+  Applicants | Video Interviews | Talent Search | 
+  Company Profile | Analytics | Subscription | Settings
 - Current plan badge bottom of sidebar
 
 Main Area:
-- Header: "Welcome back, [Company Name] 👋"
+- Header: "Welcome back, [Company Name]"
 - Stats row: Active Listings | Total Applications | 
   Shortlisted | Interviews Today | CV Views (this month)
 - Active Listings table: title, applications, views, 
@@ -404,12 +403,12 @@ STEP 2 — Requirements:
 Rich text: Job Description | Requirements
 Skills tags input | Experience Level | NQF Level dropdown
 
-STEP 3 — Interview Setup ⭐:
+STEP 3 — Interview Setup:
 "How would you like to interview candidates?"
 Radio card options:
-📋 Standard Apply Only
-📹 Live Video Interview (schedule after applying)
-🎬 On-Demand Video Assessment (candidates record answers)
+Standard Apply Only
+Live Video Interview (schedule after applying)
+On-Demand Video Assessment (candidates record answers)
 
 If On-Demand selected:
 - Add up to 5 video questions
@@ -432,7 +431,7 @@ PREMIUM SLOT: R599 once-off, top of search results +
 
 SCREEN 11 — TALENT SEARCH (EMPLOYER)
 
-Header: "🔍 Search RecruitFriend Candidate Database"
+Header: "Search RecruitFriend Candidate Database"
 Premium gate banner (for free employers):
 "Unlock 48,000+ candidate profiles — Upgrade to Growth plan"
 Upgrade button (orange)
@@ -445,7 +444,7 @@ Candidate result cards:
 RF avatar (or photo), Name (blurred if free), 
 Current/last role, Location, Skills tags (green), 
 Experience years, Last active badge, 
-Video intro badge 🎥 (if uploaded),
+Video intro badge (if uploaded),
 "View Full Profile" button | "Invite to Apply" button | 
 Save to Shortlist ★
 
@@ -484,7 +483,7 @@ Right panel:
 
 SCREEN 13 — EMPLOYER SUBSCRIPTION PLANS
 
-Header: "💼 RecruitFriend Employer Plans"
+Header: "RecruitFriend Employer Plans"
 Subheading: "Find great South African talent at every budget"
 Monthly / Annual toggle
 
@@ -518,7 +517,7 @@ SLA support | Bulk posting | Branded assessment portal
 "Book a Demo" gold button
 
 Payment row: PayFast | EFT | Invoice
-"✅ All paid plans include a 14-day free trial. 
+"All paid plans include a 14-day free trial. 
   Cancel anytime. South African VAT inclusive."
 
 ---
@@ -529,8 +528,8 @@ Header: "Applicants for: Senior Developer — Cape Town"
 Job selector dropdown | Export CSV button | Filter button
 
 Kanban columns (horizontal scroll on mobile):
-📥 New | 👁 Reviewed | ⭐ Shortlisted | 
-📅 Interview | 💬 Offer Made | ✅ Hired | ❌ Rejected
+New | Reviewed | Shortlisted | 
+Interview | Offer Made | Hired | Rejected
 
 Applicant card:
 RF avatar / photo, Name, Match % green badge, 
@@ -554,11 +553,11 @@ Status dropdown |
 MOBILE SCREENS (375px width)
 
 Bottom tab bar: 
-🏠 Home | 🔍 Jobs | 🎥 Interviews | 🤝 Network | 👤 Profile
+Home | Jobs | Interviews | Network | Profile
 
 Mobile Homepage:
 RecruitFriend logo centered | 
-"Hi Thabo 👋 3 new jobs match your profile" banner | 
+"Hi Thabo 3 new jobs match your profile" banner | 
 Search bar full width | Category icon row (horizontal scroll) | 
 Job cards (full width, swipeable)
 

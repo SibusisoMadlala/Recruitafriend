@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '../context/useAuth';
-import { LayoutDashboard, ClipboardList, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Newspaper, LogOut, Menu, X } from 'lucide-react';
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -37,6 +37,7 @@ export function AdminSidebar({ isOpen: controlledIsOpen, onOpenChange, showMobil
   const navItems = [
     { icon: LayoutDashboard, label: 'Admin Dashboard', path: '/admin/dashboard' },
     { icon: ClipboardList, label: 'Onboarding Queue', path: '/admin/onboarding' },
+    { icon: Newspaper, label: 'Community Blogs', path: '/admin/community/blogs' },
   ];
 
   const isActive = (path: string) => location.pathname === path;

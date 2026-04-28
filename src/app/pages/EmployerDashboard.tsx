@@ -58,7 +58,7 @@ export default function EmployerDashboard() {
     <div className="space-y-8">
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[#0A2540] to-[#00C853] rounded-xl p-8 text-white shadow-lg">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {companyName}! 👋</h1>
+        <h1 className="text-3xl font-bold mb-2">Welcome back, {companyName}!</h1>
         <p className="text-lg opacity-90">
           You have <span className="font-bold">{statsData.totalApplications} new applicants</span> and <span className="font-bold">{statsData.interviewsToday} interviews</span> scheduled today.
         </p>

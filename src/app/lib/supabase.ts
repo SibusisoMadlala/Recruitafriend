@@ -165,7 +165,13 @@ function isPublicEndpoint(endpoint: string, method: string) {
 
   if (normalizedMethod !== 'GET') return false;
 
-  return path === '/stats' || path === '/jobs' || /^\/jobs\/[^/]+$/.test(path);
+  return (
+    path === '/stats' ||
+    path === '/jobs' ||
+    /^\/jobs\/[^/]+$/.test(path) ||
+    path === '/community/blogs' ||
+    /^\/community\/blogs\/[^/]+$/.test(path)
+  );
 }
 
 function isLikelyJwt(token: string | undefined | null) {
@@ -304,6 +310,205 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   // ----- Supabase Edge Function Edge-case Intercepts -----
   // Kong API gateway has issues verifying newly issued ES256 session tokens, throwing "Invalid JWT".
   // To avoid breaking authenticated features, we intercept and run native equivalent queries here.
+  if (method === 'GET' && normalizedEndpoint === '/community/blogs') {
+    const params = new URLSearchParams(endpoint.split('?')[1] || '');
+    const featuredOnly = ['true', '1', 'yes'].includes(String(params.get('featured') || '').toLowerCase());
+    const limit = Math.min(100, Math.max(1, parseInt(String(params.get('limit') || '24'), 10) || 24));
+
+    let query = supabase
+      .from('community_blog_posts')
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .eq('status', 'published')
+      .not('published_at', 'is', null)
+      .lte('published_at', new Date().toISOString())
+      .order('published_at', { ascending: false })
+      .limit(limit);
+
+    if (featuredOnly) {
+      query = query.eq('featured', true);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const posts = (data || []) as Array<Record<string, unknown>>;
+    return {
+      posts,
+      featured: posts.filter((post) => post.featured === true).slice(0, 3),
+      latest: posts.slice(0, 9),
+      count: posts.length,
+    };
+  }
+
+  if (method === 'GET' && /^\/community\/blogs\/[^/]+$/.test(normalizedEndpoint)) {
+    const slug = decodeURIComponent(String(normalizedEndpoint.split('/').pop() || '')).trim().toLowerCase();
+    if (!slug) throw new Error('Blog slug is required');
+
+    const { data, error } = await supabase
+      .from('community_blog_posts')
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .eq('slug', slug)
+      .eq('status', 'published')
+      .not('published_at', 'is', null)
+      .lte('published_at', new Date().toISOString())
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('Blog post not found');
+    return { post: data };
+  }
+
+  if (method === 'GET' && normalizedEndpoint === '/admin/community/blogs') {
+    if (!effectiveUser) throw new Error('Not authenticated');
+    await assertAdmin(effectiveUser.id);
+
+    const { data, error } = await supabase
+      .from('community_blog_posts')
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return { posts: data || [] };
+  }
+
+  if (method === 'POST' && normalizedEndpoint === '/admin/community/blogs') {
+    if (!effectiveUser) throw new Error('Not authenticated');
+    await assertAdmin(effectiveUser.id);
+
+    const title = String(requestBody.title || '').trim();
+    const content = String(requestBody.content || '').trim();
+    const slugInput = String(requestBody.slug || title).trim().toLowerCase();
+    const slug = slugInput
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (!title) throw new Error('Title is required');
+    if (!content) throw new Error('Content is required');
+    if (!slug) throw new Error('Slug is required');
+
+    const status = ['draft', 'published'].includes(String(requestBody.status || '').toLowerCase())
+      ? String(requestBody.status || '').toLowerCase()
+      : 'draft';
+    const isPublished = status === 'published';
+
+    const { data, error } = await supabase
+      .from('community_blog_posts')
+      .insert({
+        title,
+        slug,
+        content,
+        excerpt: requestBody.excerpt ? String(requestBody.excerpt).trim() : null,
+        cover_image_url: requestBody.cover_image_url ? String(requestBody.cover_image_url).trim() : null,
+        featured: Boolean(requestBody.featured),
+        status,
+        published_at: isPublished ? new Date().toISOString() : null,
+        author_id: effectiveUser.id,
+        author_name: requestBody.author_name ? String(requestBody.author_name).trim() : null,
+      })
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { post: data };
+  }
+
+  if (method === 'PUT' && /^\/admin\/community\/blogs\/[^/]+$/.test(normalizedEndpoint)) {
+    if (!effectiveUser) throw new Error('Not authenticated');
+    await assertAdmin(effectiveUser.id);
+
+    const blogId = String(normalizedEndpoint.split('/').pop() || '').trim();
+    if (!blogId) throw new Error('Blog post id is required');
+
+    const title = String(requestBody.title || '').trim();
+    const content = String(requestBody.content || '').trim();
+    const slugInput = String(requestBody.slug || title).trim().toLowerCase();
+    const slug = slugInput
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (!title) throw new Error('Title is required');
+    if (!content) throw new Error('Content is required');
+    if (!slug) throw new Error('Slug is required');
+
+    const status = ['draft', 'published'].includes(String(requestBody.status || '').toLowerCase())
+      ? String(requestBody.status || '').toLowerCase()
+      : 'draft';
+
+    const payload: Record<string, unknown> = {
+      title,
+      slug,
+      content,
+      excerpt: requestBody.excerpt ? String(requestBody.excerpt).trim() : null,
+      cover_image_url: requestBody.cover_image_url ? String(requestBody.cover_image_url).trim() : null,
+      featured: Boolean(requestBody.featured),
+      status,
+      author_name: requestBody.author_name ? String(requestBody.author_name).trim() : null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === 'published' && !requestBody.published_at) {
+      payload.published_at = new Date().toISOString();
+    }
+    if (status === 'draft') {
+      payload.published_at = null;
+    }
+
+    const { data, error } = await supabase
+      .from('community_blog_posts')
+      .update(payload)
+      .eq('id', blogId)
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { post: data };
+  }
+
+  if (method === 'DELETE' && /^\/admin\/community\/blogs\/[^/]+$/.test(normalizedEndpoint)) {
+    if (!effectiveUser) throw new Error('Not authenticated');
+    await assertAdmin(effectiveUser.id);
+
+    const blogId = String(normalizedEndpoint.split('/').pop() || '').trim();
+    if (!blogId) throw new Error('Blog post id is required');
+
+    const { error } = await supabase
+      .from('community_blog_posts')
+      .delete()
+      .eq('id', blogId);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  }
+
+  if (method === 'POST' && /^\/admin\/community\/blogs\/[^/]+\/(publish|unpublish)$/.test(normalizedEndpoint)) {
+    if (!effectiveUser) throw new Error('Not authenticated');
+    await assertAdmin(effectiveUser.id);
+
+    const parts = normalizedEndpoint.split('/');
+    const action = String(parts.pop() || '').toLowerCase();
+    const blogId = String(parts.pop() || '').trim();
+    if (!blogId) throw new Error('Blog post id is required');
+
+    const isPublish = action === 'publish';
+    const { data, error } = await supabase
+      .from('community_blog_posts')
+      .update({
+        status: isPublish ? 'published' : 'draft',
+        published_at: isPublish ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', blogId)
+      .select('id, slug, title, excerpt, content, cover_image_url, status, featured, published_at, author_id, author_name, created_at, updated_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { post: data };
+  }
+
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/stats')) {
     await assertApprovedEmployer(effectiveUser.id);
     const { data: jobs } = await supabase.from('jobs').select('id, status, is_visible').eq('employer_id', effectiveUser.id);

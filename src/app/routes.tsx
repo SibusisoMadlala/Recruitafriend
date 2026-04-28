@@ -35,10 +35,13 @@ import Signup from './pages/Signup';
 import VerifyEmail from './pages/VerifyEmail';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
+import CommunityBlogDetail from './pages/CommunityBlogDetail';
+import CommunityBlogSubmit from './pages/CommunityBlogSubmit';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
+import AdminCommunityBlogs from './pages/AdminCommunityBlogs';
 
 export const router = createBrowserRouter([
   {
@@ -49,6 +52,8 @@ export const router = createBrowserRouter([
       { path: 'jobs', Component: JobSearch },
       { path: 'jobs/:id', Component: JobDetail },
       { path: 'community', Component: CommunityBlogs },
+      { path: 'community/submit', element: <ProtectedRoute><CommunityBlogSubmit /></ProtectedRoute> },
+      { path: 'community/:slug', Component: CommunityBlogDetail },
       { path: 'login', Component: Login },
       { path: 'signup', Component: Signup },
       { path: 'verify-email', Component: VerifyEmail },
@@ -103,6 +108,7 @@ export const router = createBrowserRouter([
     children: [
       { path: 'dashboard', Component: AdminDashboard },
       { path: 'onboarding', Component: AdminOnboardingQueue },
+      { path: 'community/blogs', Component: AdminCommunityBlogs },
     ],
   },
   
