@@ -16,9 +16,43 @@ const apiCallMock = vi.fn(async (endpoint: string, options?: RequestInit) => {
           job_id: 'job-99',
           status: 'applied',
           job_title: 'Frontend Engineer',
+          company: 'RecruitFriend',
+          created_at: new Date().toISOString(),
+          job: {
+            city: 'Johannesburg',
+            province: 'Gauteng',
+            employer: {
+              name: 'RecruitFriend',
+              avatar_url: null,
+              social_links: {
+                employer: {
+                  hideCompanyName: true,
+                  hideWebsite: true,
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 'app-2',
+          job_id: 'job-100',
+          status: 'viewed',
+          job_title: 'Product Designer',
           company: 'Acme',
           created_at: new Date().toISOString(),
-          job: { city: 'Johannesburg', province: 'Gauteng' },
+          job: {
+            city: 'Cape Town',
+            province: 'Western Cape',
+            employer: {
+              name: 'Acme',
+              avatar_url: 'https://example.com/logo.png',
+              social_links: {
+                employer: {
+                  industry: 'Technology',
+                },
+              },
+            },
+          },
         },
       ],
     };
@@ -97,6 +131,19 @@ describe('Seeker workflow interactions', () => {
     await waitFor(() => {
       expect(apiCallMock).toHaveBeenCalledWith('/applications/app-1', expect.objectContaining({ method: 'PUT' }));
     });
+  });
+
+  it('masks hidden companies while applied and reveals them after progression', async () => {
+    render(
+      <MemoryRouter>
+        <SeekerApplications />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Frontend Engineer')).toBeInTheDocument();
+    expect(screen.getByText('RecruitFriend')).toBeInTheDocument();
+    expect(screen.getByText('Product Designer')).toBeInTheDocument();
+    expect(screen.getByText('Acme')).toBeInTheDocument();
   });
 
   it('applies to a saved job through API call', async () => {

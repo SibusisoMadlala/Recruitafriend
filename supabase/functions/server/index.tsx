@@ -584,6 +584,86 @@ async function resolveEmployerSettings(db: ReturnType<typeof getDb>, employerId:
   return { notifications, templates };
 }
 
+const SEEKER_COMPANY_MASK = 'RecruitFriend';
+
+function getEmployerVisibilityFlags(employer: Record<string, unknown> | null | undefined) {
+  const social = (employer?.social_links && typeof employer.social_links === 'object')
+    ? employer.social_links as Record<string, unknown>
+    : {};
+
+  const employerMeta = (social.employer && typeof social.employer === 'object')
+    ? social.employer as Record<string, unknown>
+    : {};
+
+  return {
+    social,
+    employerMeta,
+    hideCompanyName: Boolean(employerMeta.hideCompanyName),
+    hideWebsite: Boolean(employerMeta.hideWebsite),
+  };
+}
+
+function shouldRevealEmployerToSeeker(applicationStatus: unknown) {
+  return String(applicationStatus || '').trim().toLowerCase() !== 'applied';
+}
+
+function buildSeekerFacingEmployer(
+  employer: Record<string, unknown> | null | undefined,
+  revealHiddenIdentity: boolean,
+) {
+  if (!employer) return null;
+
+  const { social, employerMeta, hideCompanyName, hideWebsite } = getEmployerVisibilityFlags(employer);
+
+  if (!hideCompanyName && !hideWebsite) {
+    return employer;
+  }
+
+  const nextSocial = { ...social };
+
+  if (revealHiddenIdentity) {
+    const { hideCompanyName: _hiddenCompanyName, hideWebsite: _hiddenWebsite, ...visibleEmployerMeta } = employerMeta;
+
+    if (Object.keys(visibleEmployerMeta).length > 0) {
+      nextSocial.employer = visibleEmployerMeta;
+    } else {
+      delete nextSocial.employer;
+    }
+
+    return {
+      ...employer,
+      social_links: Object.keys(nextSocial).length > 0 ? nextSocial : null,
+    };
+  }
+
+  nextSocial.employer = {
+    ...employerMeta,
+    hideCompanyName,
+    hideWebsite,
+  };
+
+  return {
+    ...employer,
+    name: hideCompanyName ? SEEKER_COMPANY_MASK : employer.name,
+    avatar_url: hideCompanyName ? null : employer.avatar_url ?? null,
+    social_links: nextSocial,
+  };
+}
+
+function resolveSeekerFacingCompanyName(
+  employer: Record<string, unknown> | null | undefined,
+  revealHiddenIdentity: boolean,
+) {
+  if (!employer) return '';
+
+  const { hideCompanyName } = getEmployerVisibilityFlags(employer);
+  if (hideCompanyName && !revealHiddenIdentity) {
+    return SEEKER_COMPANY_MASK;
+  }
+
+  return String(employer.name || '').trim();
+}
+
 function parseInterviewNotes(notes: unknown) {
   if (typeof notes !== 'string' || !notes.startsWith(INTERVIEW_NOTES_PREFIX)) return null;
   try {
@@ -1304,6 +1384,7 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const db = getDb();
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
 
     const { data: job, error } = await db
       .from('jobs')
@@ -1315,6 +1396,29 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
     if (!job.is_visible || job.status !== 'active') return c.json({ error: 'Job not found' }, 404);
 
     let employer: Record<string, unknown> | null = null;
+    let revealHiddenIdentity = false;
+
+    const authUser = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
+    if (authUser?.id) {
+      const profile = await getProfileLite(db, authUser.id);
+      if (profile?.user_type === 'seeker') {
+        const { data: progressedApplication, error: applicationLookupError } = await db
+          .from('applications')
+          .select('id')
+          .eq('job_id', id)
+          .eq('seeker_id', authUser.id)
+          .neq('status', 'applied')
+          .limit(1)
+          .maybeSingle();
+
+        if (applicationLookupError) {
+          console.error('Get job visibility application lookup error:', applicationLookupError);
+        } else {
+          revealHiddenIdentity = Boolean(progressedApplication);
+        }
+      }
+    }
+
     if (job.employer_id) {
       const { data: employerProfile, error: employerError } = await db
         .from('profiles')
@@ -1325,7 +1429,10 @@ app.get('/make-server-bca21fd3/jobs/:id', async (c) => {
       if (employerError) {
         console.error('Get job employer profile error:', employerError);
       } else {
-        employer = (employerProfile as Record<string, unknown> | null) || null;
+        employer = buildSeekerFacingEmployer(
+          (employerProfile as Record<string, unknown> | null) || null,
+          revealHiddenIdentity,
+        );
       }
     }
 
@@ -1707,7 +1814,7 @@ app.get('/make-server-bca21fd3/applications/my', async (c) => {
     const { data: employers, error: employersError } = employerIds.length > 0
       ? await db
           .from('profiles')
-          .select('id, name, avatar_url')
+          .select('id, name, avatar_url, social_links')
           .in('id', employerIds)
       : { data: [] as Array<Record<string, unknown>>, error: null };
 
@@ -1721,10 +1828,12 @@ app.get('/make-server-bca21fd3/applications/my', async (c) => {
     const normalized = rows.map((app) => {
       const job = jobMap[String(app.job_id || '')] || null;
       const employer = job ? employerMap[String(job.employer_id || '')] || null : null;
+      const revealHiddenIdentity = shouldRevealEmployerToSeeker(app.status);
+      const seekerFacingEmployer = buildSeekerFacingEmployer(employer, revealHiddenIdentity);
       const hydratedJob = job
         ? {
             ...job,
-            employer: employer ? { name: employer.name || '', avatar_url: employer.avatar_url || null } : null,
+            employer: seekerFacingEmployer,
           }
         : null;
 
@@ -1732,7 +1841,7 @@ app.get('/make-server-bca21fd3/applications/my', async (c) => {
         ...app,
         job: hydratedJob,
         job_title: String(job?.title || ''),
-        company: String(employer?.name || ''),
+        company: resolveSeekerFacingCompanyName(employer, revealHiddenIdentity),
       };
     });
 
@@ -3567,6 +3676,251 @@ app.get('/make-server-bca21fd3/stats', async (c) => {
   } catch (error) {
     console.error('Get stats error:', error);
     return c.json({ error: 'Failed to get stats' }, 500);
+  }
+});
+
+// ============================================================
+// Application Supporting Documents
+// ============================================================
+
+// GET /applications/:appId/docs  — seeker lists their own docs for an application
+app.get('/make-server-bca21fd3/applications/:appId/docs', async (c) => {
+  try {
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const appId = c.req.param('appId');
+    const db = getDb();
+
+    // Verify the application belongs to this seeker
+    const { data: application, error: appError } = await db
+      .from('applications')
+      .select('id, seeker_id')
+      .eq('id', appId)
+      .eq('seeker_id', user.id)
+      .maybeSingle();
+
+    if (appError) throw appError;
+    if (!application) return c.json({ error: 'Application not found' }, 404);
+
+    const { data: docs, error: docsError } = await db
+      .from('application_supporting_docs')
+      .select('id, file_name, file_size, mime_type, storage_bucket, storage_path, created_at')
+      .eq('application_id', appId)
+      .eq('seeker_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (docsError) throw docsError;
+    return c.json({ docs: docs || [] });
+  } catch (error) {
+    console.error('List application docs error:', error);
+    return c.json({ error: 'Failed to list documents' }, 500);
+  }
+});
+
+// POST /applications/:appId/docs  — seeker registers a doc after uploading to storage
+app.post('/make-server-bca21fd3/applications/:appId/docs', async (c) => {
+  try {
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const appId = c.req.param('appId');
+    const db = getDb();
+
+    // Verify the application belongs to this seeker
+    const { data: application, error: appError } = await db
+      .from('applications')
+      .select('id, seeker_id')
+      .eq('id', appId)
+      .eq('seeker_id', user.id)
+      .maybeSingle();
+
+    if (appError) throw appError;
+    if (!application) return c.json({ error: 'Application not found' }, 404);
+
+    const { fileName, fileSize, mimeType, storageBucket, storagePath } = await c.req.json();
+
+    if (!fileName || !storagePath) {
+      return c.json({ error: 'fileName and storagePath are required' }, 400);
+    }
+
+    // Limit to 5 documents per application
+    const { count, error: countError } = await db
+      .from('application_supporting_docs')
+      .select('id', { count: 'exact', head: true })
+      .eq('application_id', appId)
+      .eq('seeker_id', user.id);
+
+    if (countError) throw countError;
+    if ((count || 0) >= 5) {
+      return c.json({ error: 'Maximum of 5 supporting documents per application' }, 422);
+    }
+
+    const { data: doc, error: insertError } = await db
+      .from('application_supporting_docs')
+      .insert({
+        application_id: appId,
+        seeker_id: user.id,
+        file_name: String(fileName).trim(),
+        file_size: fileSize ? Number(fileSize) : null,
+        mime_type: mimeType ? String(mimeType).trim() : null,
+        storage_bucket: String(storageBucket || 'application-docs').trim(),
+        storage_path: String(storagePath).trim(),
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+    return c.json({ doc }, 201);
+  } catch (error) {
+    console.error('Register application doc error:', error);
+    return c.json({ error: 'Failed to register document' }, 500);
+  }
+});
+
+// DELETE /applications/:appId/docs/:docId  — seeker deletes their own doc
+app.delete('/make-server-bca21fd3/applications/:appId/docs/:docId', async (c) => {
+  try {
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const user = await getAuthUser(c.req.header('Authorization'), delegatedJwt);
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const appId = c.req.param('appId');
+    const docId = c.req.param('docId');
+    const db = getDb();
+
+    const { data: doc, error: fetchError } = await db
+      .from('application_supporting_docs')
+      .select('id, seeker_id, storage_bucket, storage_path')
+      .eq('id', docId)
+      .eq('application_id', appId)
+      .eq('seeker_id', user.id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!doc) return c.json({ error: 'Document not found' }, 404);
+
+    // Remove from storage
+    const bucket = String((doc as Record<string, unknown>).storage_bucket || 'application-docs');
+    const path = String((doc as Record<string, unknown>).storage_path || '');
+    if (path) {
+      await db.storage.from(bucket).remove([path]);
+    }
+
+    const { error: deleteError } = await db
+      .from('application_supporting_docs')
+      .delete()
+      .eq('id', docId)
+      .eq('seeker_id', user.id);
+
+    if (deleteError) throw deleteError;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Delete application doc error:', error);
+    return c.json({ error: 'Failed to delete document' }, 500);
+  }
+});
+
+// GET /employer/applications/:appId/docs  — employer lists docs for an application
+app.get('/make-server-bca21fd3/employer/applications/:appId/docs', async (c) => {
+  try {
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!auth.user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const appId = c.req.param('appId');
+    const db = getDb();
+
+    // Verify the application is for one of this employer's jobs
+    const { data: application, error: appError } = await db
+      .from('applications')
+      .select('id, job_id')
+      .eq('id', appId)
+      .maybeSingle();
+
+    if (appError) throw appError;
+    if (!application) return c.json({ error: 'Application not found' }, 404);
+
+    const { data: job, error: jobError } = await db
+      .from('jobs')
+      .select('id, employer_id')
+      .eq('id', (application as Record<string, unknown>).job_id as string)
+      .eq('employer_id', auth.user.id)
+      .maybeSingle();
+
+    if (jobError) throw jobError;
+    if (!job) return c.json({ error: 'Not authorized to view this application' }, 403);
+
+    const { data: docs, error: docsError } = await db
+      .from('application_supporting_docs')
+      .select('id, file_name, file_size, mime_type, created_at')
+      .eq('application_id', appId)
+      .order('created_at', { ascending: true });
+
+    if (docsError) throw docsError;
+    return c.json({ docs: docs || [] });
+  } catch (error) {
+    console.error('Employer list application docs error:', error);
+    return c.json({ error: 'Failed to list documents' }, 500);
+  }
+});
+
+// GET /employer/applications/:appId/docs/:docId/url  — employer gets signed URL for a doc
+app.get('/make-server-bca21fd3/employer/applications/:appId/docs/:docId/url', async (c) => {
+  try {
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!auth.user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const appId = c.req.param('appId');
+    const docId = c.req.param('docId');
+    const db = getDb();
+
+    // Verify the application is for one of this employer's jobs
+    const { data: application, error: appError } = await db
+      .from('applications')
+      .select('id, job_id')
+      .eq('id', appId)
+      .maybeSingle();
+
+    if (appError) throw appError;
+    if (!application) return c.json({ error: 'Application not found' }, 404);
+
+    const { data: job, error: jobError } = await db
+      .from('jobs')
+      .select('id, employer_id')
+      .eq('id', (application as Record<string, unknown>).job_id as string)
+      .eq('employer_id', auth.user.id)
+      .maybeSingle();
+
+    if (jobError) throw jobError;
+    if (!job) return c.json({ error: 'Not authorized to view this application' }, 403);
+
+    const { data: doc, error: docError } = await db
+      .from('application_supporting_docs')
+      .select('id, file_name, storage_bucket, storage_path')
+      .eq('id', docId)
+      .eq('application_id', appId)
+      .maybeSingle();
+
+    if (docError) throw docError;
+    if (!doc) return c.json({ error: 'Document not found' }, 404);
+
+    const bucket = String((doc as Record<string, unknown>).storage_bucket || 'application-docs');
+    const path = String((doc as Record<string, unknown>).storage_path || '');
+
+    const { data: signedData, error: signedError } = await db.storage
+      .from(bucket)
+      .createSignedUrl(path, 60 * 10); // 10-minute expiry
+
+    if (signedError || !signedData?.signedUrl) {
+      return c.json({ error: 'Failed to create access link for document' }, 500);
+    }
+
+    return c.json({ signedUrl: signedData.signedUrl, fileName: (doc as Record<string, unknown>).file_name });
+  } catch (error) {
+    console.error('Employer get doc URL error:', error);
+    return c.json({ error: 'Failed to retrieve document link' }, 500);
   }
 });
 

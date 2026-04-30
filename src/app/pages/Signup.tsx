@@ -189,7 +189,11 @@ export default function Signup() {
             <div className="flex items-start">
               <input type="checkbox" required className="mt-1 mr-2" />
               <span className="text-sm text-[var(--rf-muted)]">
-                I agree to the Terms of Service and Privacy Policy
+                I agree to the{' '}
+                <Link to="/terms" className="font-semibold text-[var(--rf-green)] hover:underline">
+                  Terms &amp; Conditions
+                </Link>{' '}
+                and Privacy Policy
               </span>
             </div>
 

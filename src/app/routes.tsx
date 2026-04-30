@@ -32,6 +32,7 @@ import EmployerApplicants from './pages/EmployerApplicants';
 import EmployerInterviews from './pages/EmployerInterviews';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import TermsAndConditions from './pages/TermsAndConditions';
 import VerifyEmail from './pages/VerifyEmail';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
       { path: 'community/:slug', Component: CommunityBlogDetail },
       { path: 'login', Component: Login },
       { path: 'signup', Component: Signup },
+      { path: 'terms', Component: TermsAndConditions },
       { path: 'verify-email', Component: VerifyEmail },
       { path: 'forgot-password', Component: ForgotPassword },
       { path: 'reset-password', Component: ResetPassword },

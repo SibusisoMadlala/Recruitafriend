@@ -29,17 +29,14 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Company */}
           <div>
-            <h4 className="font-semibold mb-4">Company</h4>
+            <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">About Us</a></li>
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">How It Works</a></li>
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Pricing</a></li>
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Contact</a></li>
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">FAQ</a></li>
+              <li><Link to="/terms" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Terms &amp; Conditions</Link></li>
+              <li><span className="text-gray-400">Privacy Policy</span></li>
             </ul>
           </div>
+
         </div>
 
         {/* Social and Bottom Bar */}
@@ -61,7 +58,12 @@ export function Footer() {
           
           <div className="text-center text-sm text-gray-400 md:text-right">
             <p className="mb-1">Proudly South African 🇿🇦 | POPIA Compliant</p>
-            <p>© 2025 RecruitFriend. All rights reserved.</p>
+            <p>
+              © 2025 RecruitFriend. All rights reserved.{' '}
+              <Link to="/terms" className="text-gray-300 transition-colors hover:text-[var(--rf-green)]">
+                Terms &amp; Conditions
+              </Link>
+            </p>
           </div>
         </div>
       </div>

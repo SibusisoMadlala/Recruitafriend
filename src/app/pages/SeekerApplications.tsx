@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Search, Eye } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Search, Eye, Paperclip, Upload, Trash2, FileText, X } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
-import { apiCall } from '../lib/supabase';
+import { apiCall, supabase } from '../lib/supabase';
+import { useAuth } from '../context/useAuth';
 import type { Application } from '../types';
 import { resolveAppCompanyName } from '../lib/companyDisplay';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,13 +24,30 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 
+interface SupportingDoc {
+  id: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
 export default function SeekerApplications() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [withdrawApp, setWithdrawApp] = useState<Application | null>(null);
+
+  // Supporting documents dialog state
+  const [docsApp, setDocsApp] = useState<Application | null>(null);
+  const [docs, setDocs] = useState<SupportingDoc[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
 
   const statusFromQuery = searchParams.get('status');
   const [activeTab, setActiveTab] = useState<string>(statusFromQuery ? statusFromQuery.charAt(0).toUpperCase() + statusFromQuery.slice(1) : 'All');
@@ -48,6 +73,97 @@ export default function SeekerApplications() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function openDocsDialog(app: Application) {
+    setDocsApp(app);
+    setDocs([]);
+    setLoadingDocs(true);
+    try {
+      const { docs: rows } = await apiCall(`/applications/${app.id}/docs`, { requireAuth: true });
+      setDocs(rows || []);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load documents');
+    } finally {
+      setLoadingDocs(false);
+    }
+  }
+
+  async function handleDocUpload(file: File) {
+    if (!docsApp || !profile?.id) return;
+
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ];
+    if (!allowed.includes(file.type)) {
+      toast.error('Allowed formats: PDF, DOCX, DOC, JPG, PNG, WEBP');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File is too large. Max size is 10 MB.');
+      return;
+    }
+    if (docs.length >= 5) {
+      toast.error('Maximum of 5 supporting documents per application.');
+      return;
+    }
+
+    setUploadingDoc(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageBucket = 'application-docs';
+      const storagePath = `${profile.id}/${docsApp.id}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(storageBucket)
+        .upload(storagePath, file, { cacheControl: '3600', upsert: false, contentType: file.type || undefined });
+
+      if (uploadError) throw uploadError;
+
+      const { doc } = await apiCall(`/applications/${docsApp.id}/docs`, {
+        requireAuth: true,
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || null,
+          storageBucket,
+          storagePath,
+        }),
+      });
+      setDocs((prev) => [...prev, doc]);
+      toast.success('Document uploaded');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to upload document');
+    } finally {
+      setUploadingDoc(false);
+    }
+  }
+
+  async function handleDeleteDoc(docId: string) {
+    if (!docsApp) return;
+    setDeletingDocId(docId);
+    try {
+      await apiCall(`/applications/${docsApp.id}/docs/${docId}`, { method: 'DELETE', requireAuth: true });
+      setDocs((prev) => prev.filter((d) => d.id !== docId));
+      toast.success('Document removed');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  }
+
+  function formatFileSize(bytes: number | null) {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function handleWithdraw(app: Application) {
@@ -165,7 +281,13 @@ export default function SeekerApplications() {
                   </td>
                   <td className="py-4 px-6 text-right">
                     {app.status === 'applied' && (
-                       <div className="flex justify-end space-x-3">
+                       <div className="flex justify-end flex-wrap gap-2">
+                         <button
+                           onClick={() => openDocsDialog(app)}
+                           className="flex items-center gap-1 text-sm font-semibold text-[var(--rf-muted)] hover:text-[var(--rf-navy)]"
+                         >
+                           <Paperclip className="w-3.5 h-3.5" /> Docs
+                         </button>
                          <button disabled={workingId === app.id} onClick={() => setWithdrawApp(app)} className="text-sm font-semibold text-[var(--rf-muted)] hover:text-red-600 disabled:opacity-60">Withdraw</button>
                          <button onClick={() => navigate(`/jobs/${app.job_id}`)} className="text-sm font-semibold text-[var(--rf-green)] hover:underline">View Job</button>
                        </div>
@@ -202,6 +324,77 @@ export default function SeekerApplications() {
           )}
         </div>
       </div>
+
+      {/* Supporting Documents Dialog */}
+      <Dialog open={Boolean(docsApp)} onOpenChange={(open) => !open && setDocsApp(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Supporting Documents</DialogTitle>
+            <DialogDescription>
+              Upload additional documents for your application to <span className="font-semibold">{docsApp?.job_title || 'this job'}</span>. Up to 5 files (PDF, DOCX, images, max 10 MB each).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <input
+                ref={docInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void handleDocUpload(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => docInputRef.current?.click()}
+                disabled={uploadingDoc || docs.length >= 5}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-200 px-4 py-4 text-sm font-semibold text-[var(--rf-muted)] transition-colors hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {uploadingDoc ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Add Document</>  
+                )}
+              </button>
+            </div>
+
+            {loadingDocs ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--rf-muted)]" />
+              </div>
+            ) : docs.length === 0 ? (
+              <p className="text-center text-sm text-[var(--rf-muted)] py-4">No documents uploaded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {docs.map((doc) => (
+                  <li key={doc.id} className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <FileText className="w-5 h-5 flex-shrink-0 text-[var(--rf-muted)]" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[var(--rf-navy)]">{doc.file_name}</p>
+                      {doc.file_size && (
+                        <p className="text-xs text-[var(--rf-muted)]">{formatFileSize(doc.file_size)}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={deletingDocId === doc.id}
+                      onClick={() => handleDeleteDoc(doc.id)}
+                      className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                      aria-label="Remove document"
+                    >
+                      {deletingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={Boolean(withdrawApp)} onOpenChange={(open) => !open && setWithdrawApp(null)}>
         <AlertDialogContent>

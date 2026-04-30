@@ -159,17 +159,7 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
         </nav>
 
         {/* Bottom Plan Badge */}
-        <div className="p-6 border-t border-gray-700 bg-[#081f36]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">Current Plan</span>
-          </div>
-          <div className={`
-            inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide
-            ${getBadgeColor(plan)}
-          `}>
-            {plan}
-          </div>
-        </div>
+        
       </aside>
 
       {/* Overlay for mobile */}

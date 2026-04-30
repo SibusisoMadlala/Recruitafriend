@@ -306,13 +306,13 @@ export default function Homepage() {
               <Building2 className="w-12 h-12 mb-4 text-white" />
               <h3 className="text-2xl font-bold mb-2">Looking for talent?</h3>
               <p className="text-green-100 mb-6">
-                Post your job for free and connect with qualified South African talent.
+                Post your job and connect with qualified South African talent.
               </p>
               <Link
                 to={user ? (profile?.userType === 'employer' ? '/employer/post-job' : '/seeker/dashboard') : '/signup?type=employer'}
                 className="inline-flex w-full justify-center rounded-[var(--rf-radius-pill)] bg-white px-8 py-3 font-semibold text-[var(--rf-green)] transition-colors hover:bg-gray-100 sm:w-auto"
               >
-                {user && profile?.userType === 'employer' ? 'Post a Job' : 'Post a Job Free'}
+                {user && profile?.userType === 'employer' ? 'Post a Job' : 'Post a Job'}
               </Link>
             </div>
           </div>

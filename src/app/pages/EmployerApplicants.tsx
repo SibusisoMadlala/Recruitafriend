@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useParams } from 'react-router';
-import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video, Download } from 'lucide-react';
+import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video, Download, Paperclip, Loader2 as Loader } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -62,6 +62,12 @@ export default function EmployerApplicants() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingCvFile, setLoadingCvFile] = useState(false);
   const [fetchedSeeker, setFetchedSeeker] = useState<Seeker | null>(null);
+
+  // Supporting documents state
+  const [supportingDocs, setSupportingDocs] = useState<Array<{ id: string; file_name: string; file_size: number | null; mime_type: string | null; created_at: string }>>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+
   const activeApplications = applications.filter((app) => COLUMNS.includes(app.status));
 
   // When a dialog opens and the nested seeker join returned null, fetch profile separately
@@ -129,6 +135,14 @@ export default function EmployerApplicants() {
 
   async function openApplicantProfile(app: Application) {
     setSelectedApplication(app);
+    setSupportingDocs([]);
+
+    // Load supporting docs in background
+    setLoadingDocs(true);
+    apiCall(`/employer/applications/${app.id}/docs`, { requireAuth: true })
+      .then(({ docs }) => setSupportingDocs(docs || []))
+      .catch(() => {/* non-critical */})
+      .finally(() => setLoadingDocs(false));
 
     const seekerId = (app as any)?.seeker_id;
     if (app.seeker || !seekerId) return;
@@ -178,6 +192,43 @@ export default function EmployerApplicants() {
     } finally {
       setLoadingCvFile(false);
     }
+  }
+
+  async function handleOpenDoc(appId: string, docId: string, mode: 'view' | 'download', fileName: string) {
+    setOpeningDocId(docId);
+    try {
+      const { signedUrl } = await apiCall(
+        `/employer/applications/${appId}/docs/${docId}/url`,
+        { requireAuth: true }
+      );
+      if (!signedUrl) {
+        toast.error('Unable to access document');
+        return;
+      }
+      if (mode === 'download') {
+        const link = document.createElement('a');
+        link.href = signedUrl;
+        link.download = fileName;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to access document');
+    } finally {
+      setOpeningDocId(null);
+    }
+  }
+
+  function formatFileSize(bytes: number | null) {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
@@ -563,6 +614,52 @@ export default function EmployerApplicants() {
                 <p className="text-sm text-gray-600 whitespace-pre-line border border-gray-100 rounded p-3 bg-gray-50">
                   {selectedApplication.cover_letter || 'No cover letter provided.'}
                 </p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-[#0A2540] mb-2 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4" />
+                  Supporting Documents
+                </h4>
+                {loadingDocs ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <Loader className="w-4 h-4 animate-spin" /> Loading documents…
+                  </div>
+                ) : supportingDocs.length === 0 ? (
+                  <p className="text-sm text-gray-500">No supporting documents attached.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {supportingDocs.map((doc) => (
+                      <li key={doc.id} className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                        <FileText className="w-4 h-4 flex-shrink-0 text-gray-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#0A2540]">{doc.file_name}</p>
+                          {doc.file_size && (
+                            <p className="text-xs text-gray-400">{formatFileSize(doc.file_size)}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            type="button"
+                            disabled={openingDocId === doc.id}
+                            onClick={() => void handleOpenDoc(selectedApplication.id, doc.id, 'view', doc.file_name)}
+                            className="text-xs border border-gray-200 rounded px-2 py-1 text-[#0A2540] hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {openingDocId === doc.id ? <Loader className="w-3 h-3 animate-spin inline" /> : 'View'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={openingDocId === doc.id}
+                            onClick={() => void handleOpenDoc(selectedApplication.id, doc.id, 'download', doc.file_name)}
+                            className="inline-flex items-center gap-1 text-xs border border-gray-200 rounded px-2 py-1 text-[#0A2540] hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            <Download className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}
