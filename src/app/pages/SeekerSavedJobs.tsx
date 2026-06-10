@@ -10,7 +10,6 @@ export default function SeekerSavedJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [workingJobId, setWorkingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     loadSavedJobs();
@@ -42,23 +41,6 @@ export default function SeekerSavedJobs() {
       toast.success('Removed from saved jobs');
     } catch (error: any) {
       toast.error(error.message || 'Failed to remove saved job');
-    } finally {
-      setWorkingJobId(null);
-    }
-  }
-
-  async function handleApply(jobId: string) {
-    setWorkingJobId(jobId);
-    try {
-      await apiCall('/applications', {
-        requireAuth: true,
-        method: 'POST',
-        body: JSON.stringify({ jobId }),
-      });
-      setAppliedJobIds((prev) => new Set([...prev, jobId]));
-      toast.success('Application submitted');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to apply');
     } finally {
       setWorkingJobId(null);
     }
@@ -177,9 +159,9 @@ export default function SeekerSavedJobs() {
                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span> Applied
                 </span>
               ) : (
-                <button disabled={workingJobId === job.id} onClick={() => handleApply(job.id)} className="w-full bg-[var(--rf-green)] text-white font-semibold py-2 rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors text-sm disabled:opacity-60">
+                <Link to={`/jobs/${job.id}`} className="w-full text-center bg-[var(--rf-green)] text-white font-semibold py-2 rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors text-sm block">
                   Apply Now
-                </button>
+                </Link>
               )}
             </div>
           </div>
