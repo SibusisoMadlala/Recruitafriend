@@ -193,6 +193,12 @@ export default function JobDetail() {
       return;
     }
 
+    if (!cvFile) {
+      toast.error('Please attach your CV before applying.');
+      cvFileInputRef.current?.click();
+      return;
+    }
+
     setApplying(true);
     try {
       const result = await apiCall('/applications', {
@@ -236,6 +242,12 @@ export default function JobDetail() {
 
     if (screeningPayload.some((entry) => !entry.answer)) {
       toast.error('Please answer all interview questions before applying.');
+      return;
+    }
+
+    if (!cvFile) {
+      toast.error('Please attach your CV before applying.');
+      cvFileInputRef.current?.click();
       return;
     }
 
@@ -630,7 +642,7 @@ export default function JobDetail() {
                     )}
 
                     <div className="space-y-1.5">
-                      <div className="text-xs font-semibold text-[var(--rf-text)]">Attach CV / Resume <span className="font-normal text-[var(--rf-muted)]">(optional)</span></div>
+                      <div className="text-xs font-semibold text-[var(--rf-text)]">Attach CV / Resume <span className="font-normal text-red-500">*required</span></div>
                       <input
                         ref={cvFileInputRef}
                         type="file"
