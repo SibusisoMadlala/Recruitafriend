@@ -674,30 +674,26 @@ export default function JobDetail() {
                       )}
                     </div>
 
-                    <button
-                      onClick={handleQuickApply}
-                      disabled={applying}
-                      className="w-full py-3 bg-[var(--rf-orange)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#E55C2E] transition-colors font-semibold disabled:opacity-50"
-                    >
-                      {applying ? 'Applying...' : 'Quick Apply'}
-                    </button>
-                    
-                    <div className="border-t border-[var(--rf-border)] pt-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--rf-text)] mb-1">
+                        Cover Letter <span className="font-normal text-[var(--rf-muted)]">(optional)</span>
+                      </label>
                       <textarea
                         value={coverLetter}
                         onChange={(e) => setCoverLetter(e.target.value)}
-                        placeholder="Add a custom cover letter (optional)..."
-                        className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)] mb-3"
+                        placeholder="Add a cover letter to strengthen your application..."
+                        className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
                         rows={4}
                       />
-                      <button
-                        onClick={handleCustomApply}
-                        disabled={applying}
-                        className="w-full py-3 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold disabled:opacity-50"
-                      >
-                        {applying ? 'Applying...' : 'Apply with Custom Letter'}
-                      </button>
                     </div>
+
+                    <button
+                      onClick={handleCustomApply}
+                      disabled={applying}
+                      className="w-full py-3 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold disabled:opacity-50"
+                    >
+                      {applying ? 'Applying...' : 'Submit Application'}
+                    </button>
                   </div>
                 ) : user && profile ? (
                   <div className="text-center p-4 bg-gray-50 rounded-[var(--rf-radius-md)]">
