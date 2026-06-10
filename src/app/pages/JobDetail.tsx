@@ -23,6 +23,7 @@ export default function JobDetail() {
   const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
   const [cvFile, setCvFile] = useState<File | null>(null);
   const cvFileInputRef = useRef<HTMLInputElement>(null);
+  const [showApplyForm, setShowApplyForm] = useState(false);
 
   const toDisplayLabel = (value: unknown, fallback = 'Not specified') => {
     const normalized = String(value || '').trim();
@@ -610,90 +611,114 @@ export default function JobDetail() {
                       </div>
                     )}
 
-                    {screeningQuestions.length > 0 && (
-                      <div className="space-y-3 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 p-3">
-                        <div className="text-sm font-semibold text-[var(--rf-navy)]">Interview Questions</div>
-                        <p className="text-xs text-[var(--rf-muted)]">Answer the questions below before submitting your application.</p>
-                        <div className="space-y-3">
-                          {screeningQuestions.map((question, index) => (
-                            <div key={question.id} className="space-y-1.5">
-                              <label className="block text-xs font-semibold text-[var(--rf-text)]">
-                                Q{index + 1}. {question.prompt}
-                                {question.duration ? (
-                                  <span className="ml-1 text-[var(--rf-muted)] font-normal">({question.duration})</span>
-                                ) : null}
-                              </label>
-                              <textarea
-                                value={screeningAnswers[question.id] || ''}
-                                onChange={(e) =>
-                                  setScreeningAnswers((prev) => ({
-                                    ...prev,
-                                    [question.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Type your answer"
-                                rows={3}
-                                className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-semibold text-[var(--rf-text)]">Attach CV / Resume <span className="font-normal text-red-500">*required</span></div>
-                      <input
-                        ref={cvFileInputRef}
-                        type="file"
-                        accept=".pdf,.doc,.docx"
-                        className="hidden"
-                        onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
-                      />
-                      {cvFile ? (
-                        <div className="flex items-center gap-2 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 px-3 py-2 text-sm">
-                          <Paperclip className="w-4 h-4 text-[var(--rf-green)] shrink-0" />
-                          <span className="flex-1 truncate text-[var(--rf-text)]">{cvFile.name}</span>
+                    {!showApplyForm ? (
+                      <button
+                        onClick={() => setShowApplyForm(true)}
+                        className="w-full py-3 bg-[var(--rf-orange)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#E55C2E] transition-colors font-semibold"
+                      >
+                        Quick Apply
+                      </button>
+                    ) : (
+                      <div className="space-y-4 border-t border-[var(--rf-border)] pt-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-[var(--rf-navy)]">Your Application</p>
                           <button
                             type="button"
-                            onClick={() => { setCvFile(null); if (cvFileInputRef.current) cvFileInputRef.current.value = ''; }}
-                            className="text-[var(--rf-muted)] hover:text-red-500 transition-colors"
+                            onClick={() => setShowApplyForm(false)}
+                            className="text-[var(--rf-muted)] hover:text-[var(--rf-text)] transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-                      ) : (
+
+                        {screeningQuestions.length > 0 && (
+                          <div className="space-y-3 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 p-3">
+                            <div className="text-sm font-semibold text-[var(--rf-navy)]">Interview Questions</div>
+                            <p className="text-xs text-[var(--rf-muted)]">Answer all questions before submitting.</p>
+                            <div className="space-y-3">
+                              {screeningQuestions.map((question, index) => (
+                                <div key={question.id} className="space-y-1.5">
+                                  <label className="block text-xs font-semibold text-[var(--rf-text)]">
+                                    Q{index + 1}. {question.prompt}
+                                    {question.duration ? (
+                                      <span className="ml-1 text-[var(--rf-muted)] font-normal">({question.duration})</span>
+                                    ) : null}
+                                  </label>
+                                  <textarea
+                                    value={screeningAnswers[question.id] || ''}
+                                    onChange={(e) =>
+                                      setScreeningAnswers((prev) => ({
+                                        ...prev,
+                                        [question.id]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Type your answer"
+                                    rows={3}
+                                    className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <div className="text-xs font-semibold text-[var(--rf-text)]">
+                            CV / Resume <span className="text-red-500">*</span>
+                          </div>
+                          <input
+                            ref={cvFileInputRef}
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            className="hidden"
+                            onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
+                          />
+                          {cvFile ? (
+                            <div className="flex items-center gap-2 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 px-3 py-2 text-sm">
+                              <Paperclip className="w-4 h-4 text-[var(--rf-green)] shrink-0" />
+                              <span className="flex-1 truncate text-[var(--rf-text)]">{cvFile.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => { setCvFile(null); if (cvFileInputRef.current) cvFileInputRef.current.value = ''; }}
+                                className="text-[var(--rf-muted)] hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => cvFileInputRef.current?.click()}
+                              className="flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border border-dashed border-[var(--rf-border)] px-3 py-2.5 text-sm text-[var(--rf-muted)] hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] transition-colors"
+                            >
+                              <Paperclip className="w-4 h-4 shrink-0" />
+                              Upload CV (PDF, DOC, DOCX — max 10 MB)
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-[var(--rf-text)]">
+                            Cover Letter <span className="font-normal text-[var(--rf-muted)]">(optional)</span>
+                          </label>
+                          <textarea
+                            value={coverLetter}
+                            onChange={(e) => setCoverLetter(e.target.value)}
+                            placeholder="Add a cover letter to strengthen your application..."
+                            className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
+                            rows={4}
+                          />
+                        </div>
+
                         <button
-                          type="button"
-                          onClick={() => cvFileInputRef.current?.click()}
-                          className="flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border border-dashed border-[var(--rf-border)] px-3 py-2.5 text-sm text-[var(--rf-muted)] hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] transition-colors"
+                          onClick={handleCustomApply}
+                          disabled={applying}
+                          className="w-full py-3 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold disabled:opacity-50"
                         >
-                          <Paperclip className="w-4 h-4 shrink-0" />
-                          Upload CV (PDF, DOC, DOCX — max 10 MB)
+                          {applying ? 'Submitting...' : 'Submit Application'}
                         </button>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--rf-text)] mb-1">
-                        Cover Letter <span className="font-normal text-[var(--rf-muted)]">(optional)</span>
-                      </label>
-                      <textarea
-                        value={coverLetter}
-                        onChange={(e) => setCoverLetter(e.target.value)}
-                        placeholder="Add a cover letter to strengthen your application..."
-                        className="w-full border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--rf-green)]"
-                        rows={4}
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleCustomApply}
-                      disabled={applying}
-                      className="w-full py-3 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors font-semibold disabled:opacity-50"
-                    >
-                      {applying ? 'Applying...' : 'Submit Application'}
-                    </button>
+                      </div>
+                    )}
                   </div>
                 ) : user && profile ? (
                   <div className="text-center p-4 bg-gray-50 rounded-[var(--rf-radius-md)]">
