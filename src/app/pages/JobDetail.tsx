@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
-import { apiCall } from '../lib/supabase';
+import { apiCall, supabase } from '../lib/supabase';
 import { resolveHideWebsite } from '../lib/companyDisplay';
 import { toast } from 'sonner';
 import {
   MapPin, DollarSign, Briefcase, Calendar, Clock, Building2,
-  Share2, Flag, CheckCircle, Heart, Loader2, Globe
+  Share2, Flag, CheckCircle, Heart, Loader2, Globe, Paperclip, X
 } from 'lucide-react';
 
 export default function JobDetail() {
@@ -21,6 +21,8 @@ export default function JobDetail() {
   const [activeTab, setActiveTab] = useState('overview');
   const [coverLetter, setCoverLetter] = useState('');
   const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const cvFileInputRef = useRef<HTMLInputElement>(null);
 
   const toDisplayLabel = (value: unknown, fallback = 'Not specified') => {
     const normalized = String(value || '').trim();
@@ -144,6 +146,26 @@ export default function JobDetail() {
     }
   }
 
+  async function uploadCvAndRegister(applicationId: string) {
+    if (!cvFile || !user) return;
+    const storagePath = `${user.id}/${applicationId}/${cvFile.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from('application-docs')
+      .upload(storagePath, cvFile, { upsert: true });
+    if (uploadError) throw new Error('CV upload failed: ' + uploadError.message);
+    await apiCall(`/applications/${applicationId}/docs`, {
+      requireAuth: true,
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: cvFile.name,
+        fileSize: cvFile.size,
+        mimeType: cvFile.type,
+        storageBucket: 'application-docs',
+        storagePath,
+      }),
+    });
+  }
+
   async function handleQuickApply() {
     if (!user) {
       toast.error('Please login to apply');
@@ -173,7 +195,7 @@ export default function JobDetail() {
 
     setApplying(true);
     try {
-      await apiCall('/applications', {
+      const result = await apiCall('/applications', {
         requireAuth: true,
         method: 'POST',
         body: JSON.stringify({
@@ -183,6 +205,9 @@ export default function JobDetail() {
           screeningAnswers: screeningPayload,
         }),
       });
+      if (cvFile && result?.application?.id) {
+        await uploadCvAndRegister(result.application.id);
+      }
       toast.success('Application submitted successfully!');
       navigate('/seeker/dashboard');
     } catch (error: any) {
@@ -216,7 +241,7 @@ export default function JobDetail() {
 
     setApplying(true);
     try {
-      await apiCall('/applications', {
+      const result = await apiCall('/applications', {
         requireAuth: true,
         method: 'POST',
         body: JSON.stringify({
@@ -226,6 +251,9 @@ export default function JobDetail() {
           screeningAnswers: screeningPayload,
         }),
       });
+      if (cvFile && result?.application?.id) {
+        await uploadCvAndRegister(result.application.id);
+      }
       toast.success('Application submitted successfully!');
       navigate('/seeker/dashboard');
     } catch (error: any) {
@@ -600,6 +628,39 @@ export default function JobDetail() {
                         </div>
                       </div>
                     )}
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-semibold text-[var(--rf-text)]">Attach CV / Resume <span className="font-normal text-[var(--rf-muted)]">(optional)</span></div>
+                      <input
+                        ref={cvFileInputRef}
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        className="hidden"
+                        onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
+                      />
+                      {cvFile ? (
+                        <div className="flex items-center gap-2 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 px-3 py-2 text-sm">
+                          <Paperclip className="w-4 h-4 text-[var(--rf-green)] shrink-0" />
+                          <span className="flex-1 truncate text-[var(--rf-text)]">{cvFile.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setCvFile(null); if (cvFileInputRef.current) cvFileInputRef.current.value = ''; }}
+                            className="text-[var(--rf-muted)] hover:text-red-500 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => cvFileInputRef.current?.click()}
+                          className="flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border border-dashed border-[var(--rf-border)] px-3 py-2.5 text-sm text-[var(--rf-muted)] hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] transition-colors"
+                        >
+                          <Paperclip className="w-4 h-4 shrink-0" />
+                          Upload CV (PDF, DOC, DOCX — max 10 MB)
+                        </button>
+                      )}
+                    </div>
 
                     <button
                       onClick={handleQuickApply}
