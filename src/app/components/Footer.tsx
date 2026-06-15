@@ -1,5 +1,13 @@
 import { Link } from 'react-router';
-import { Linkedin, Facebook, Instagram, Twitter } from 'lucide-react';
+import { Linkedin, Facebook, Instagram } from 'lucide-react';
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="X (Twitter)">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+    </svg>
+  );
+}
 
 export function Footer() {
   return (
@@ -24,8 +32,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link to="/jobs" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Find Jobs</Link></li>
               <li><Link to="/employer/post-job" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Post a Job</Link></li>
-              <li><Link to="/seeker/network" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Community</Link></li>
-              <li><a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Blog</a></li>
+              <li><Link to="/community" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Community</Link></li>
             </ul>
           </div>
 
@@ -42,20 +49,20 @@ export function Footer() {
         {/* Social and Bottom Bar */}
         <div className="mt-8 flex flex-col items-start justify-between gap-4 border-t border-gray-700 pt-8 md:flex-row md:items-center">
           <div className="flex flex-wrap items-center gap-4">
-            <a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
+            <a href="https://linkedin.com/company/recruitfriend" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
               <Linkedin className="w-5 h-5" />
             </a>
-            <a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
+            <a href="https://facebook.com/recruitfriend" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
               <Facebook className="w-5 h-5" />
             </a>
-            <a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
+            <a href="https://instagram.com/recruitfriend" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
               <Instagram className="w-5 h-5" />
             </a>
-            <a href="#" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
-              <Twitter className="w-5 h-5" />
+            <a href="https://x.com/recruitfriend" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">
+              <XIcon className="w-5 h-5" />
             </a>
           </div>
-          
+
           <div className="text-center text-sm text-gray-400 md:text-right">
             <p className="mb-1">Proudly South African 🇿🇦 | POPIA Compliant</p>
             <p>
