@@ -67,7 +67,7 @@ export default function TermsAndConditions() {
               By using RecruitFriend, you agree to the following terms. Please read them carefully before using the platform.
             </p>
             <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-slate-300">
-              Last updated: 30 April 2026
+              Last updated: 15 June 2026
             </p>
           </div>
 
