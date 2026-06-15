@@ -462,7 +462,7 @@ export default function JobDetail() {
                     {employmentTypeLabel}
                   </span>
                   {isRemoteRole && (
-                    <span className="px-4 py-1.5 bg-[var(--rf-green)] bg-opacity-10 text-[var(--rf-green)] rounded-[var(--rf-radius-pill)] text-sm font-semibold">
+                    <span className="px-4 py-1.5 bg-green-50 text-green-700 rounded-[var(--rf-radius-pill)] text-sm font-semibold">
                       Remote
                     </span>
                   )}
