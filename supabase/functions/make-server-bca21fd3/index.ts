@@ -1643,7 +1643,10 @@ app.post('/make-server-bca21fd3/applications', async (c) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') return c.json({ error: 'You have already applied to this job.' }, 409);
+      throw error;
+    }
 
     // Submit-time dual notifications (non-blocking)
     const emailDelivery: { employer: string; seeker: string } = { employer: 'skipped', seeker: 'skipped' };
