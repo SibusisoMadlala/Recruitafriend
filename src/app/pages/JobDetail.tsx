@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
 import { apiCall, supabase } from '../lib/supabase';
@@ -78,6 +78,39 @@ export default function JobDetail() {
   }
 
   const isSeeker = !authLoading && !!user && !!(profile?.userType === 'seeker' || (profile as any)?.user_type === 'seeker');
+
+  function renderDescription(text: string) {
+    if (!text) return <p className="text-[var(--rf-muted)]">No description provided.</p>;
+    const emojiOrBullet = /^(\s*)([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}☎📞📱🔹🔸▪▸►•\-\*])\s+/u;
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let listItems: string[] = [];
+    const flushList = (key: number) => {
+      if (listItems.length) {
+        elements.push(
+          <ul key={`ul-${key}`} className="list-disc list-outside pl-5 space-y-1 text-[var(--rf-muted)] text-sm mb-2">
+            {listItems.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        );
+        listItems = [];
+      }
+    };
+    lines.forEach((line, i) => {
+      const match = line.match(emojiOrBullet);
+      if (match) {
+        listItems.push(line.replace(emojiOrBullet, '').trim());
+      } else {
+        flushList(i);
+        if (line.trim()) {
+          elements.push(<p key={i} className="text-[var(--rf-muted)] text-sm mb-1">{line}</p>);
+        } else if (elements.length) {
+          elements.push(<div key={i} className="mb-2" />);
+        }
+      }
+    });
+    flushList(lines.length);
+    return <>{elements}</>;
+  }
 
   async function handleToggleSave() {
     if (!id) return;
@@ -497,9 +530,7 @@ export default function JobDetail() {
                   {activeTab === 'overview' && (
                     <div>
                       <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-3">Job Description</h3>
-                      <p className="text-[var(--rf-muted)] whitespace-pre-line">
-                        {job.description || 'No description provided.'}
-                      </p>
+                      <div className="mt-2">{renderDescription(job.description)}</div>
                       
                       {job.skills && job.skills.length > 0 && (
                         <div className="mt-6">
