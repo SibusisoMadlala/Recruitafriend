@@ -92,6 +92,12 @@ export interface Application {
     answer: string;
     duration?: string;
   }>;
+  video_answers?: Array<{
+    question_id?: string | number;
+    question: string;
+    video_url: string;
+    duration?: number;
+  }>;
   created_at: string;
   updated_at?: string;
   /** Populated via join */

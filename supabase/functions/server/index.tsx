@@ -1800,7 +1800,7 @@ app.get('/make-server-bca21fd3/applications/my', async (c) => {
     const { data: jobs, error: jobsError } = jobIds.length > 0
       ? await db
           .from('jobs')
-          .select('id, title, city, province, employment_type, employer_id')
+          .select('id, title, city, province, employment_type, employer_id, screening_questions, interview_type')
           .in('id', jobIds)
       : { data: [] as Array<Record<string, unknown>>, error: null };
 
@@ -1874,7 +1874,7 @@ app.get('/make-server-bca21fd3/jobs/:jobId/applications', async (c) => {
     // Step 1: fetch applications (no join — avoid FK hint ambiguity)
     const { data: applications, error } = await db
       .from('applications')
-      .select('id, job_id, seeker_id, cover_letter, custom_letter, status, notes, created_at, updated_at')
+      .select('id, job_id, seeker_id, cover_letter, custom_letter, status, notes, screening_answers, video_answers, created_at, updated_at')
       .eq('job_id', jobId)
       .order('created_at', { ascending: false });
 
@@ -2397,6 +2397,64 @@ app.put('/make-server-bca21fd3/applications/:id', async (c) => {
   } catch (error) {
     console.error('Update application error:', error);
     return c.json({ error: 'Failed to update application' }, 500);
+  }
+});
+
+// Get a single seeker application with job screening questions
+app.get('/make-server-bca21fd3/seeker/applications/:id', async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const id = c.req.param('id');
+    const db = getDb();
+
+    const { data: application, error } = await db
+      .from('applications')
+      .select('*, job:jobs(id, title, screening_questions, interview_type, employer_id)')
+      .eq('id', id)
+      .eq('seeker_id', user.id)
+      .single();
+
+    if (error || !application) return c.json({ error: 'Application not found' }, 404);
+
+    const employer = application.job?.employer_id
+      ? (await db.from('profiles').select('id, name').eq('id', application.job.employer_id).maybeSingle()).data
+      : null;
+
+    return c.json({ application: { ...application, company: employer?.name || null } });
+  } catch (error) {
+    console.error('Get seeker application error:', error);
+    return c.json({ error: 'Failed to load application' }, 500);
+  }
+});
+
+// Save video answers for an application (seeker only)
+app.put('/make-server-bca21fd3/applications/:id/video-answers', async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const id = c.req.param('id');
+    const { video_answers } = await c.req.json();
+    const db = getDb();
+
+    const { data: appRecord } = await db.from('applications').select('seeker_id').eq('id', id).single();
+    if (!appRecord) return c.json({ error: 'Application not found' }, 404);
+    if (appRecord.seeker_id !== user.id) return c.json({ error: 'Not authorized' }, 403);
+
+    const { data: application, error } = await db
+      .from('applications')
+      .update({ video_answers: video_answers || [], updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return c.json({ application });
+  } catch (error) {
+    console.error('Save video answers error:', error);
+    return c.json({ error: 'Failed to save video answers' }, 500);
   }
 });
 

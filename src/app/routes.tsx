@@ -14,6 +14,7 @@ import EmployerLayout from './layouts/EmployerLayout';
 import SeekerDashboard from './pages/SeekerDashboard';
 import ProfileBuilder from './pages/ProfileBuilder';
 import VideoInterviews from './pages/VideoInterviews';
+import VideoAssessment from './pages/VideoAssessment';
 import Networking from './pages/Networking';
 import SeekerSubscriptions from './pages/SeekerSubscriptions';
 import SeekerCV from './pages/SeekerCV';
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
       { path: 'saved', Component: SeekerSavedJobs },
       { path: 'applications', Component: SeekerApplications },
       { path: 'interviews', Component: VideoInterviews },
+      { path: 'video-assessment/:applicationId', Component: VideoAssessment },
       { path: 'network', Component: Networking },
       { path: 'subscriptions', Component: SeekerSubscriptions },
     ]

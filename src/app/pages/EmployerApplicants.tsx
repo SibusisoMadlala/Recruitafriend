@@ -606,6 +606,31 @@ export default function EmployerApplicants() {
                 </div>
               )}
 
+              {Array.isArray((selectedApplication as any)?.video_answers) && (selectedApplication as any).video_answers.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-[#0A2540] mb-3 flex items-center gap-2">
+                    <Video className="w-4 h-4" />
+                    Video Assessment Answers
+                  </h4>
+                  <div className="space-y-4">
+                    {(selectedApplication as any).video_answers.map((va: any, i: number) => (
+                      <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
+                          <p className="text-xs font-semibold text-[#0A2540]">Q{i + 1}: {va.question}</p>
+                        </div>
+                        <div className="bg-black">
+                          <video
+                            src={va.video_url}
+                            controls
+                            className="w-full max-h-56 object-contain"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h4 className="font-semibold text-[#0A2540] mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4" />

@@ -190,10 +190,10 @@ export default function VideoInterviews() {
                         </div>
                       </div>
                       <button
-                        onClick={() => navigate('/seeker/applications?status=shortlisted')}
+                        onClick={() => navigate(`/seeker/video-assessment/${interview.id}`)}
                         className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-[var(--rf-radius-md)] text-sm font-semibold hover:bg-purple-700"
                       >
-                        Continue <ArrowRight className="w-4 h-4 ml-1" />
+                        Record Answers <ArrowRight className="w-4 h-4 ml-1" />
                       </button>
                     </div>
                   ))
