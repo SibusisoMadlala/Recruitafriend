@@ -83,6 +83,21 @@ export default function EmployerAnalytics() {
     })();
   }, []);
 
+  function exportCsv() {
+    const rows = [
+      ['Date', 'Applications'],
+      ...buildChartData(allApplications, dayCount).map(r => [r.name, String(r.apps)]),
+    ];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `recruitfriend-analytics-${dateRange}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const dayCount = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
   const chartData = buildChartData(allApplications, dayCount);
   const hasData = allApplications.length > 0;
@@ -120,7 +135,7 @@ export default function EmployerAnalytics() {
               <SelectItem value="90d">Last 90 Days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon">
+          <Button variant="outline" size="icon" onClick={exportCsv} title="Export CSV" disabled={loading || !hasData}>
             <Download className="w-4 h-4 text-gray-500" />
           </Button>
         </div>

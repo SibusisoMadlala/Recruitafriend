@@ -89,6 +89,11 @@ export default function TalentSearch() {
        void fetchCandidates();
     }, []);
 
+    // Re-fetch when sort order changes
+    useEffect(() => {
+       void fetchCandidates();
+    }, [sortBy]);
+
     const activeFiltersCount = useMemo(() => {
        return [
           query.trim().length > 0,

@@ -74,15 +74,29 @@ export default function SeekerDashboard() {
     }
   }
 
+  const RF_INTERVIEW = 'RF_INTERVIEW:';
+
   const upcomingInterviews = useMemo(() => {
     return applications
       .filter((app) => app.status === 'interview')
-      .map((app) => ({
-        id: app.id,
-        role: app.job_title || 'Interview',
-        company: resolveAppCompanyName(app),
-        date: 'Check your email for schedule',
-      }));
+      .map((app) => {
+        let scheduledAt: string | null = null;
+        let link: string | null = null;
+        if (app.notes?.startsWith(RF_INTERVIEW)) {
+          try {
+            const meta = JSON.parse(app.notes.slice(RF_INTERVIEW.length));
+            scheduledAt = meta?.scheduled_at || null;
+            link = meta?.link || null;
+          } catch {}
+        }
+        return {
+          id: app.id,
+          role: app.job_title || 'Interview',
+          company: resolveAppCompanyName(app),
+          date: scheduledAt ? new Date(scheduledAt).toLocaleString() : 'Awaiting schedule from employer',
+          link,
+        };
+      });
   }, [applications]);
 
   const visibleRecommendedJobs = useMemo(() => {
@@ -189,7 +203,7 @@ export default function SeekerDashboard() {
                             </div>
                             <div>
                                 <h5 className="font-semibold text-[var(--rf-navy)] text-sm">{app.job_title}</h5>
-                                <p className="text-xs text-[var(--rf-muted)]">{resolveAppCompanyName(app)} • Applied 2 days ago</p>
+                                <p className="text-xs text-[var(--rf-muted)]">{resolveAppCompanyName(app)} • {new Date(app.created_at).toLocaleDateString()}</p>
                             </div>
                         </div>
                         <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full capitalize">
@@ -221,8 +235,13 @@ export default function SeekerDashboard() {
                     <Calendar className="w-3 h-3 mr-1" />
                     {interview.date}
                  </div>
-                  <button disabled className="w-full py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded cursor-not-allowed" title="Waiting room opens when schedule and link are available">
-                    Join Waiting Room
+                  <button
+                    onClick={() => interview.link ? window.open(interview.link, '_blank', 'noopener,noreferrer') : undefined}
+                    disabled={!interview.link}
+                    className={`w-full py-2 text-xs font-bold rounded transition-colors ${interview.link ? 'bg-[var(--rf-green)] text-white hover:bg-[#00B548] cursor-pointer' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                    title={interview.link ? 'Join your interview' : 'Waiting room opens when the employer shares the link'}
+                  >
+                    {interview.link ? 'Join Interview' : 'Join Waiting Room'}
                  </button>
                </div>
              )) : (
