@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "recruitfriend-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "dist", "--listen", "3030", "--no-clipboard"],
+      "port": 3030
+    }
+  ]
+}
