@@ -10,6 +10,7 @@ export default function SeekerSavedJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [workingJobId, setWorkingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     loadSavedJobs();

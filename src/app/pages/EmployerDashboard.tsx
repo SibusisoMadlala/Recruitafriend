@@ -24,9 +24,8 @@ export default function EmployerDashboard() {
   });
   const [activeListings, setActiveListings] = useState<any[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
-  const recentApplicants: any[] = [];
-  const todaysInterviews: any[] = [];
-  const performanceData: any[] = [];
+  const [recentApplicants, setRecentApplicants] = useState<any[]>([]);
+  const [todaysInterviews, setTodaysInterviews] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -36,7 +35,37 @@ export default function EmployerDashboard() {
           apiCall('/employer/jobs'),
         ]);
         setStatsData({ activeListings: count, totalApplications, shortlisted, interviewsToday, cvViews });
-        setActiveListings((jobs || []).filter((j: any) => j.status === 'active' && j.is_visible === true).slice(0, 5));
+        const allJobs: any[] = jobs || [];
+        setActiveListings(allJobs.filter((j: any) => j.status === 'active' && j.is_visible === true).slice(0, 5));
+
+        // Load recent applicants from the first job with applications
+        const jobWithApps = allJobs.find((j: any) => (j.apps ?? 0) > 0);
+        if (jobWithApps) {
+          try {
+            const { applications } = await apiCall(`/jobs/${jobWithApps.id}/applications`, { requireAuth: true });
+            setRecentApplicants((applications || []).slice(0, 4));
+          } catch { /* non-critical */ }
+        }
+
+        // Load today's scheduled interviews across all active jobs
+        const today = new Date().toDateString();
+        const RF_INTERVIEW = 'RF_INTERVIEW:';
+        const interviewJobs = allJobs.filter((j: any) => (j.apps ?? 0) > 0).slice(0, 5);
+        const appsArrays = await Promise.all(
+          interviewJobs.map((j: any) =>
+            apiCall(`/jobs/${j.id}/applications`, { requireAuth: true })
+              .then(({ applications }) => (applications || []).map((a: any) => ({ ...a, job_title: j.title })))
+              .catch(() => [])
+          )
+        );
+        const todayInterviews = appsArrays.flat().filter((a: any) => {
+          if (a.status !== 'interview' || !a.notes?.startsWith(RF_INTERVIEW)) return false;
+          try {
+            const meta = JSON.parse(a.notes.slice(RF_INTERVIEW.length));
+            return meta?.scheduled_at && new Date(meta.scheduled_at).toDateString() === today;
+          } catch { return false; }
+        });
+        setTodaysInterviews(todayInterviews);
       } catch (err) {
         console.error('Failed to load employer dashboard data:', err);
       } finally {
@@ -169,23 +198,23 @@ export default function EmployerDashboard() {
                   <div key={i} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors first:rounded-t-xl last:rounded-b-xl">
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-[#0A2540] text-white">
-                          {app.name.split(' ').map((n: string) => n[0]).join('')}
+                        <AvatarFallback className="bg-[#0A2540] text-white text-xs">
+                          {(app.seeker?.name || '??').split(' ').map((n: string) => n[0]).join('')}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-semibold text-[#0A2540]">{app.name}</p>
-                        <p className="text-xs text-gray-500">Applied for <span className="font-medium text-[#00C853]">{app.role}</span> • {app.time}</p>
+                        <p className="font-semibold text-[#0A2540]">{app.seeker?.name || 'Candidate'}</p>
+                        <p className="text-xs text-gray-500">{app.seeker?.headline || app.seeker?.email || ''} • {new Date(app.created_at).toLocaleDateString()}</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" className="text-[#0A2540] border-gray-200">
-                      View Profile
-                    </Button>
+                    <Link to="/employer/applicants">
+                      <Button variant="outline" size="sm" className="text-[#0A2540] border-gray-200">View</Button>
+                    </Link>
                   </div>
                 ))
               ) : (
                 <div className="p-8 text-center text-gray-500">
-                   <p>No recent applicants yet.</p>
+                   <p>{statsLoading ? 'Loading...' : 'No recent applicants yet.'}</p>
                 </div>
               )}
             </div>
@@ -200,11 +229,23 @@ export default function EmployerDashboard() {
             <h2 className="text-xl font-bold text-[#0A2540]">Today's Interviews</h2>
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 min-h-[100px] flex items-center justify-center">
                {todaysInterviews.length > 0 ? (
-                 <div className="w-full">
-                    {/* Maps over interviews here */}
+                 <div className="w-full divide-y divide-gray-100">
+                   {todaysInterviews.map((a: any, i: number) => {
+                     let time = '';
+                     try { const m = JSON.parse(a.notes.slice('RF_INTERVIEW:'.length)); time = m?.scheduled_at ? new Date(m.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''; } catch {}
+                     return (
+                       <div key={i} className="py-3 flex items-center justify-between">
+                         <div>
+                           <p className="text-sm font-semibold text-[#0A2540]">{a.seeker?.name || 'Candidate'}</p>
+                           <p className="text-xs text-gray-500">{a.job_title} {time ? `• ${time}` : ''}</p>
+                         </div>
+                         <Link to="/employer/interviews"><Button variant="outline" size="sm">Details</Button></Link>
+                       </div>
+                     );
+                   })}
                  </div>
                ) : (
-                 <p className="text-sm text-gray-500 text-center">No interviews scheduled today</p>
+                 <p className="text-sm text-gray-500 text-center">{statsLoading ? 'Loading...' : 'No interviews scheduled today'}</p>
                )}
             </div>
           </div>
@@ -214,14 +255,27 @@ export default function EmployerDashboard() {
 
           {/* Listing Performance */}
           <div className="space-y-4">
-             <h2 className="text-xl font-bold text-[#0A2540]">Performance</h2>
-             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 min-h-[150px] flex flex-col justify-center">
-                {performanceData.length > 0 ? (
-                  <div className="space-y-4">
-                     {/* Maps over performance data */}
+             <h2 className="text-xl font-bold text-[#0A2540]">Job Performance</h2>
+             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                {activeListings.length > 0 ? (
+                  <div className="space-y-3">
+                    {activeListings.slice(0, 4).map((job: any, i: number) => (
+                      <div key={i}>
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span className="font-medium truncate max-w-[140px]">{job.title}</span>
+                          <span>{job.apps ?? 0} apps · {job.views ?? 0} views</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#00C853] rounded-full"
+                            style={{ width: `${Math.min(100, ((job.apps ?? 0) / Math.max(1, ...activeListings.map((j: any) => j.apps ?? 0))) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <p className="text-center text-gray-500 text-sm">No performance data available yet.</p>
+                  <p className="text-center text-gray-500 text-sm py-6">{statsLoading ? 'Loading...' : 'No active listings yet.'}</p>
                 )}
              </div>
           </div>
