@@ -103,18 +103,24 @@ export default function EmployerAnalytics() {
   const chartData = buildChartData(allApplications, dayCount);
   const hasData = allApplications.length > 0;
 
+  // Stats scoped to the selected date range so they match the chart
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - dayCount);
+  const rangeApps = allApplications.filter(a => new Date(a.created_at) >= cutoff);
+  const rangeLabel = dateRange === '7d' ? 'Last 7 Days' : dateRange === '90d' ? 'Last 90 Days' : 'Last 30 Days';
+
   const metrics = [
-    { label: 'Total Job Views',    value: loading ? '…' : String(statsData.views),        change: '', icon: Eye },
-    { label: 'Total Applications', value: loading ? '…' : String(statsData.applications), change: '', icon: Users },
-    { label: 'Interviews / Offers',value: loading ? '…' : String(statsData.hired),         change: '', icon: CheckCircle },
-    { label: 'Avg Days to Apply',  value: loading ? '…' : `${statsData.avgDays} Days`,     change: '', icon: Clock },
+    { label: 'Total Job Views',                  value: loading ? '…' : String(statsData.views),     change: '', icon: Eye },
+    { label: `Applications (${rangeLabel})`,     value: loading ? '…' : String(rangeApps.length),    change: '', icon: Users },
+    { label: `Interviews / Offers (${rangeLabel})`, value: loading ? '…' : String(rangeApps.filter(a => a.status === 'offer' || a.status === 'interview').length), change: '', icon: CheckCircle },
+    { label: 'Avg Days to Apply',                value: loading ? '…' : `${statsData.avgDays} Days`, change: '', icon: Clock },
   ];
 
-  // funnel values
+  // funnel values scoped to date range
   const funnelViews = statsData.views;
-  const funnelApps  = statsData.applications;
-  const funnelIntvw = allApplications.filter(a => a.status === 'interview').length;
-  const funnelHired = allApplications.filter(a => a.status === 'offer').length;
+  const funnelApps  = rangeApps.length;
+  const funnelIntvw = rangeApps.filter(a => a.status === 'interview').length;
+  const funnelHired = rangeApps.filter(a => a.status === 'offer').length;
   const funnelMax   = Math.max(funnelViews, 1);
 
   return (
@@ -170,6 +176,16 @@ export default function EmployerAnalytics() {
           <h3 className="text-xl font-semibold text-[#0A2540] mb-2">No Analytics Data Yet</h3>
           <p className="text-gray-500 max-w-md">
             Your analytics will appear here once you start receiving job views and applications.
+          </p>
+        </Card>
+      ) : rangeApps.length === 0 ? (
+        <Card className="border-none shadow-sm p-12 flex flex-col items-center justify-center text-center">
+          <div className="bg-gray-50 p-6 rounded-full mb-4">
+            <BarChart className="w-12 h-12 text-gray-300" />
+          </div>
+          <h3 className="text-xl font-semibold text-[#0A2540] mb-2">No Applications in This Period</h3>
+          <p className="text-gray-500 max-w-md">
+            You have {allApplications.length} total application{allApplications.length !== 1 ? 's' : ''} but none in the {rangeLabel.toLowerCase()}. Try selecting a wider date range.
           </p>
         </Card>
       ) : (

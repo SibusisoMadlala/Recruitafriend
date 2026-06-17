@@ -2096,7 +2096,8 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
     let query = db
       .from('profiles')
       .select('id, name, email, headline, summary, location, avatar_url, skills, experience, social_links, updated_at')
-      .eq('user_type', 'seeker');
+      .eq('user_type', 'seeker')
+      .limit(500);
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,headline.ilike.%${search}%,summary.ilike.%${search}%`);
@@ -2107,7 +2108,10 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
     }
 
     const { data: profiles, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('Talent search DB error:', error);
+      return c.json({ error: 'Failed to load candidates', detail: error.message }, 500);
+    }
 
     const normalized = (profiles || []).map((profile: any) => {
       const yearsOfExperience = estimateYearsOfExperience(profile.experience);

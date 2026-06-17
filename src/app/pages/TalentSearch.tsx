@@ -127,13 +127,13 @@ export default function TalentSearch() {
      <div className="space-y-6 h-full flex flex-col relative overflow-hidden">
         {/* Upgrade banner for starter plan */}
         {isStarterPlan && (
-           <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+           <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-amber-800 text-sm">
                  <Lock className="w-4 h-4 flex-shrink-0" />
-                 <span>You're on the free plan. Upgrade to a monthly subscription for full talent database access.</span>
+                 <span>Free plan — upgrade to a monthly subscription for full access.</span>
               </div>
-              <Link to="/employer/subscriptions" className="flex items-center gap-1 text-xs font-semibold text-amber-800 whitespace-nowrap hover:underline">
-                 Upgrade <ArrowRight className="w-3 h-3" />
+              <Link to="/employer/subscriptions" className="flex items-center gap-1 text-xs font-semibold text-amber-800 hover:underline self-start sm:self-auto whitespace-nowrap">
+                 View plans <ArrowRight className="w-3 h-3" />
               </Link>
            </div>
         )}

@@ -569,15 +569,17 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
         `${message} ${text}`
       );
 
-      // For non-auth failures, surface the server error directly.
-      if (!authGateFailure) {
+      // For 4xx non-auth errors, surface the error directly.
+      // For 5xx server errors or auth failures, fall through to local fallback query.
+      if (!authGateFailure && serverResponse.status < 500) {
         throw new Error(message || 'Failed to search candidates');
       }
       // Otherwise continue to local fallback query below.
     } catch (serverError: any) {
       const msg = String(serverError?.message || '');
       const knownAuthGateError = /Invalid JWT|Missing authorization header|UNAUTHORIZED_NO_AUTH_HEADER|UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM|Unsupported JWT algorithm ES256|Unsupported JWT algorithm|unauthorized|not authorized|forbidden/i.test(msg);
-      if (!knownAuthGateError) {
+      // For network/CORS errors or auth gate errors, fall through to local fallback
+      if (!knownAuthGateError && serverError?.name !== 'TypeError') {
         throw serverError;
       }
     }
