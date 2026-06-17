@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { MapPin, Search, Video, Briefcase, Loader2, Mail, Lock } from 'lucide-react';
+import { MapPin, Search, Video, Briefcase, Loader2, Mail, Lock, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -63,8 +63,6 @@ export default function TalentSearch() {
    const [expandedVideoCandidateId, setExpandedVideoCandidateId] = useState<string | null>(null);
 
     const fetchCandidates = useCallback(async () => {
-       // Don't fetch when user is on starter plan (paywall shown)
-       if (profile && String(profile.subscription || '').toLowerCase() === 'starter') return;
        setLoading(true);
        try {
           const params = new URLSearchParams();
@@ -122,31 +120,23 @@ export default function TalentSearch() {
        setSortBy('relevance');
     }
 
-   // Subscription gate: talent search requires a paid plan
-   const hasAccess = !authLoading && profile && String(profile.subscription || '').toLowerCase() !== 'starter';
-
-   if (!authLoading && profile && !hasAccess) {
-      return (
-         <div className="flex flex-col items-center justify-center min-h-[500px] p-8 text-center">
-            <div className="bg-[#0A2540]/5 rounded-full p-6 mb-6">
-               <Lock className="w-12 h-12 text-[#0A2540]" />
-            </div>
-            <h2 className="text-2xl font-bold text-[#0A2540] mb-3">Talent Database</h2>
-            <p className="text-gray-500 max-w-md mb-2">
-               Search and contact candidates directly. Upgrade to a monthly subscription to unlock full access to our talent database.
-            </p>
-            <p className="text-sm text-gray-400 mb-8">Your current plan: Free (Starter)</p>
-            <Link to="/employer/subscriptions">
-               <Button className="bg-[#00C853] hover:bg-[#00B548] text-white px-8 py-3 text-base font-semibold">
-                  View Plans &amp; Upgrade
-               </Button>
-            </Link>
-         </div>
-      );
-   }
+   // Show a soft upgrade banner for starter-plan employers (doesn't block access)
+   const isStarterPlan = !authLoading && profile && String(profile.subscription || '').toLowerCase() === 'starter';
 
    return (
      <div className="space-y-6 h-full flex flex-col relative overflow-hidden">
+        {/* Upgrade banner for starter plan */}
+        {isStarterPlan && (
+           <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-amber-800 text-sm">
+                 <Lock className="w-4 h-4 flex-shrink-0" />
+                 <span>You're on the free plan. Upgrade to a monthly subscription for full talent database access.</span>
+              </div>
+              <Link to="/employer/subscriptions" className="flex items-center gap-1 text-xs font-semibold text-amber-800 whitespace-nowrap hover:underline">
+                 Upgrade <ArrowRight className="w-3 h-3" />
+              </Link>
+           </div>
+        )}
         {/* Header */}
         <div className="bg-[#0A2540] text-white p-8 rounded-xl relative overflow-hidden shadow-lg">
            <div className="relative z-10 max-w-3xl">
