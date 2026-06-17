@@ -156,10 +156,13 @@ const QUALIFICATION_OPTIONS = [
    { value: 'trade-test', label: 'Trade Test / Artisan Qualification' },
 ];
 
+type BoostTier = 'standard' | 'featured' | 'premium';
+
 export default function PostJob() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<BoostTier>('standard');
    const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([
       { id: 1, prompt: '', duration: '1min' },
    ]);
@@ -218,7 +221,8 @@ export default function PostJob() {
           requirements: requirementsArr,
           benefits: benefitsArr,
           interview_type: data.interview_type,
-               screening_questions: normalizedScreeningQuestions,
+          screening_questions: normalizedScreeningQuestions,
+          boost_tier: selectedTier,
         }),
       });
 
@@ -588,35 +592,84 @@ export default function PostJob() {
                  </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
-                 {/* Boost Options */}
-                 <Card className="border-2 border-gray-100 hover:border-[#00C853] cursor-pointer transition-all">
-                    <CardContent className="p-4 text-center">
-                       <h3 className="font-bold text-[#0A2540] mb-2">Standard</h3>
-                       <p className="text-2xl font-bold text-[#0A2540] mb-2">Free</p>
-                       <p className="text-xs text-gray-500 mb-4">Standard placement</p>
-                       <Button variant="outline" className="w-full">Select</Button>
-                    </CardContent>
-                 </Card>
+              <div className="space-y-3 pt-6">
+                 <h3 className="font-semibold text-[#0A2540] text-sm">Choose a listing boost</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Standard */}
+                    <Card
+                       onClick={() => setSelectedTier('standard')}
+                       className={`cursor-pointer transition-all border-2 ${
+                          selectedTier === 'standard'
+                             ? 'border-[#0A2540] bg-slate-50 shadow-md'
+                             : 'border-gray-100 hover:border-gray-300'
+                       }`}
+                    >
+                       <CardContent className="p-4 text-center">
+                          <h3 className="font-bold text-[#0A2540] mb-2">Standard</h3>
+                          <p className="text-2xl font-bold text-[#0A2540] mb-2">Free</p>
+                          <p className="text-xs text-gray-500 mb-4">Standard placement</p>
+                          <Button
+                             variant={selectedTier === 'standard' ? 'default' : 'outline'}
+                             className={`w-full ${selectedTier === 'standard' ? 'bg-[#0A2540] text-white' : ''}`}
+                             onClick={(e) => { e.stopPropagation(); setSelectedTier('standard'); }}
+                          >
+                             {selectedTier === 'standard' ? <><Check className="w-4 h-4 mr-1" /> Selected</> : 'Select'}
+                          </Button>
+                       </CardContent>
+                    </Card>
 
-                 <Card className="border-2 border-[#00C853] bg-green-50/10 cursor-pointer relative shadow-lg md:transform md:scale-105">
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#00C853] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Most Popular</div>
-                    <CardContent className="p-4 text-center">
-                       <h3 className="font-bold text-[#0A2540] mb-2">Featured</h3>
-                       <p className="text-2xl font-bold text-[#00C853] mb-2">R299</p>
-                       <p className="text-xs text-gray-500 mb-4">Top of search for 14 days</p>
-                       <Button className="w-full bg-[#00C853] hover:bg-[#00B548] text-white">Select</Button>
-                    </CardContent>
-                 </Card>
+                    {/* Featured */}
+                    <Card
+                       onClick={() => setSelectedTier('featured')}
+                       className={`cursor-pointer relative transition-all border-2 md:scale-105 ${
+                          selectedTier === 'featured'
+                             ? 'border-[#00C853] bg-green-50/30 shadow-lg'
+                             : 'border-[#00C853] bg-green-50/10 shadow-md'
+                       }`}
+                    >
+                       <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#00C853] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Most Popular</div>
+                       <CardContent className="p-4 text-center">
+                          <h3 className="font-bold text-[#0A2540] mb-2">Featured</h3>
+                          <p className="text-2xl font-bold text-[#00C853] mb-2">R299</p>
+                          <p className="text-xs text-gray-500 mb-4">Top of search for 14 days</p>
+                          <Button
+                             className={`w-full ${selectedTier === 'featured' ? 'bg-[#009e42] hover:bg-[#008a38]' : 'bg-[#00C853] hover:bg-[#00B548]'} text-white`}
+                             onClick={(e) => { e.stopPropagation(); setSelectedTier('featured'); }}
+                          >
+                             {selectedTier === 'featured' ? <><Check className="w-4 h-4 mr-1" /> Selected</> : 'Select'}
+                          </Button>
+                       </CardContent>
+                    </Card>
 
-                 <Card className="border-2 border-gray-100 hover:border-[#0A2540] cursor-pointer transition-all">
-                    <CardContent className="p-4 text-center">
-                       <h3 className="font-bold text-[#0A2540] mb-2">Premium</h3>
-                       <p className="text-2xl font-bold text-[#0A2540] mb-2">R599</p>
-                       <p className="text-xs text-gray-500 mb-4">Homepage feature slot</p>
-                       <Button variant="outline" className="w-full border-[#0A2540] text-[#0A2540]">Select</Button>
-                    </CardContent>
-                 </Card>
+                    {/* Premium */}
+                    <Card
+                       onClick={() => setSelectedTier('premium')}
+                       className={`cursor-pointer transition-all border-2 ${
+                          selectedTier === 'premium'
+                             ? 'border-[#0A2540] bg-slate-50 shadow-md'
+                             : 'border-gray-100 hover:border-gray-300'
+                       }`}
+                    >
+                       <CardContent className="p-4 text-center">
+                          <h3 className="font-bold text-[#0A2540] mb-2">Premium</h3>
+                          <p className="text-2xl font-bold text-[#0A2540] mb-2">R599</p>
+                          <p className="text-xs text-gray-500 mb-4">Homepage feature slot</p>
+                          <Button
+                             variant={selectedTier === 'premium' ? 'default' : 'outline'}
+                             className={`w-full ${selectedTier === 'premium' ? 'bg-[#0A2540] text-white' : 'border-[#0A2540] text-[#0A2540]'}`}
+                             onClick={(e) => { e.stopPropagation(); setSelectedTier('premium'); }}
+                          >
+                             {selectedTier === 'premium' ? <><Check className="w-4 h-4 mr-1" /> Selected</> : 'Select'}
+                          </Button>
+                       </CardContent>
+                    </Card>
+                 </div>
+
+                 {selectedTier !== 'standard' && (
+                    <p className="text-xs text-gray-500 text-center pt-1">
+                       Payment for <strong>{selectedTier === 'featured' ? 'Featured (R299)' : 'Premium (R599)'}</strong> will be collected after publishing.
+                    </p>
+                 )}
               </div>
 
             </div>
