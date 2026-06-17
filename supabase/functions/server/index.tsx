@@ -1538,7 +1538,22 @@ app.get('/make-server-bca21fd3/employer/jobs', async (c) => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return c.json({ jobs: jobs || [] });
+
+    const jobList = jobs || [];
+    const jobIds = jobList.map((j: Record<string, unknown>) => j.id as string);
+    let appCounts: Record<string, number> = {};
+    if (jobIds.length > 0) {
+      const { data: appRows } = await db
+        .from('applications')
+        .select('job_id')
+        .in('job_id', jobIds);
+      (appRows || []).forEach((row: Record<string, unknown>) => {
+        const jid = row.job_id as string;
+        appCounts[jid] = (appCounts[jid] || 0) + 1;
+      });
+    }
+    const enrichedJobs = jobList.map((j: Record<string, unknown>) => ({ ...j, apps: appCounts[j.id as string] || 0 }));
+    return c.json({ jobs: enrichedJobs });
   } catch (error) {
     console.error('Get employer jobs error:', error);
     return c.json({ error: 'Failed to get jobs' }, 500);
