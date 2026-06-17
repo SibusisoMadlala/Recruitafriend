@@ -1470,10 +1470,11 @@ app.post('/make-server-bca21fd3/jobs', async (c) => {
           .filter((question) => question.prompt.length > 0)
       : [];
 
+    const { boost_tier, screening_questions: _sq, ...safeJobData } = jobData;
     const { data: job, error } = await db
       .from('jobs')
       .insert({
-        ...jobData,
+        ...safeJobData,
         screening_questions: screeningQuestions,
         employer_id: auth.user.id,
         status: 'active',
