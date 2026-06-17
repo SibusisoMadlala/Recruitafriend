@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
-import { LogOut, Menu, X } from 'lucide-react';
+import { LogOut, Menu, X, Download } from 'lucide-react';
 
 interface NavbarProps {
   hideMobileMenuToggle?: boolean;
@@ -14,6 +14,29 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [installReady, setInstallReady] = useState(false);
+  const deferredPrompt = useRef<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      deferredPrompt.current = e;
+      setInstallReady(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', () => { setInstallReady(false); deferredPrompt.current = null; });
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  async function handleInstall() {
+    if (!deferredPrompt.current) return;
+    deferredPrompt.current.prompt();
+    const { outcome } = await deferredPrompt.current.userChoice;
+    if (outcome === 'accepted') {
+      setInstallReady(false);
+      deferredPrompt.current = null;
+    }
+  }
 
   const userRole = String(profile?.userType || (profile as Record<string, unknown> | null)?.user_type || user?.user_metadata?.userType || '').toLowerCase();
 
@@ -97,6 +120,15 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
 
           {/* Right Side */}
           <div className="hidden md:flex items-center space-x-3 lg:space-x-4">
+            {installReady && (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--rf-radius-md)] border border-[var(--rf-green)] text-[var(--rf-green)] text-sm font-semibold hover:bg-green-50 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download App
+              </button>
+            )}
             {user ? (
               <button
                 onClick={handleSignOut}
@@ -107,13 +139,13 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
               </button>
             ) : (
               <>
-                <Link 
+                <Link
                   to="/login"
                   className="px-4 py-2 text-[var(--rf-text)] hover:text-[var(--rf-green)] transition-colors"
                 >
                   Login
                 </Link>
-                <Link 
+                <Link
                   to="/signup"
                   className="px-6 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-pill)] hover:bg-[#00B548] transition-colors shadow-[var(--rf-card-shadow)]"
                 >
@@ -153,7 +185,16 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
                 </Link>
               ))}
 
-              <div className="mt-2 border-t border-gray-100 pt-3">
+              <div className="mt-2 border-t border-gray-100 pt-3 flex flex-col gap-2">
+                {installReady && (
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); handleInstall(); }}
+                    className="flex w-full items-center justify-center gap-2 rounded-[var(--rf-radius-md)] bg-green-50 border border-[var(--rf-green)] px-4 py-3 text-[var(--rf-green)] font-semibold transition-colors hover:bg-green-100"
+                  >
+                    <Download className="h-5 w-5" />
+                    Download App
+                  </button>
+                )}
                 {user ? (
                   <button
                     onClick={handleSignOut}
