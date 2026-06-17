@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPin, Search, Video, Briefcase, Loader2, Mail } from 'lucide-react';
+import { Link } from 'react-router';
+import { MapPin, Search, Video, Briefcase, Loader2, Mail, Lock } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -7,6 +8,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
+import { useAuth } from '../context/useAuth';
 
 type ExperienceLevel = 'entry' | 'junior' | 'mid' | 'senior';
 
@@ -48,6 +50,7 @@ function formatExperience(level: ExperienceLevel, years: number) {
 }
 
 export default function TalentSearch() {
+    const { profile, loading: authLoading } = useAuth();
     const [query, setQuery] = useState('');
     const [locationFilter, setLocationFilter] = useState('');
     const [selectedLevels, setSelectedLevels] = useState<ExperienceLevel[]>([]);
@@ -60,6 +63,8 @@ export default function TalentSearch() {
    const [expandedVideoCandidateId, setExpandedVideoCandidateId] = useState<string | null>(null);
 
     const fetchCandidates = useCallback(async () => {
+       // Don't fetch when user is on starter plan (paywall shown)
+       if (profile && String(profile.subscription || '').toLowerCase() === 'starter') return;
        setLoading(true);
        try {
           const params = new URLSearchParams();
@@ -116,6 +121,29 @@ export default function TalentSearch() {
        setHasVideoOnly(false);
        setSortBy('relevance');
     }
+
+   // Subscription gate: talent search requires a paid plan
+   const hasAccess = !authLoading && profile && String(profile.subscription || '').toLowerCase() !== 'starter';
+
+   if (!authLoading && profile && !hasAccess) {
+      return (
+         <div className="flex flex-col items-center justify-center min-h-[500px] p-8 text-center">
+            <div className="bg-[#0A2540]/5 rounded-full p-6 mb-6">
+               <Lock className="w-12 h-12 text-[#0A2540]" />
+            </div>
+            <h2 className="text-2xl font-bold text-[#0A2540] mb-3">Talent Database</h2>
+            <p className="text-gray-500 max-w-md mb-2">
+               Search and contact candidates directly. Upgrade to a monthly subscription to unlock full access to our talent database.
+            </p>
+            <p className="text-sm text-gray-400 mb-8">Your current plan: Free (Starter)</p>
+            <Link to="/employer/subscriptions">
+               <Button className="bg-[#00C853] hover:bg-[#00B548] text-white px-8 py-3 text-base font-semibold">
+                  View Plans &amp; Upgrade
+               </Button>
+            </Link>
+         </div>
+      );
+   }
 
    return (
      <div className="space-y-6 h-full flex flex-col relative overflow-hidden">

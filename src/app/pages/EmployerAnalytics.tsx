@@ -41,16 +41,17 @@ export default function EmployerAnalytics() {
     (async () => {
       setLoading(true);
       try {
-        const { jobs } = await apiCall('/employer/jobs');
+        const { jobs } = await apiCall('/employer/jobs', { requireAuth: true });
         const jobList: any[] = jobs || [];
         const totalViews = jobList.reduce((s: number, j: any) => s + (j.views || 0), 0);
-        const jobIds = jobList.map((j: any) => j.id);
 
-        // Fetch all applications for all employer jobs
+        // Only fetch applications for jobs that have them, cap at 20 to avoid timeout
+        const jobsWithApps = jobList.filter((j: any) => (j.apps || 0) > 0).slice(0, 20);
+
         const appsByJob: any[] = (
           await Promise.all(
-            jobIds.map((id: string) =>
-              apiCall(`/jobs/${id}/applications`)
+            jobsWithApps.map((j: any) =>
+              apiCall(`/jobs/${j.id}/applications`, { requireAuth: true })
                 .then(({ applications }) => applications || [])
                 .catch(() => [])
             )

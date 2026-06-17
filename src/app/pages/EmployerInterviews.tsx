@@ -71,15 +71,27 @@ export default function EmployerInterviews() {
       setLoading(true);
       try {
          const { jobs } = await apiCall('/employer/jobs', { requireAuth: true });
-         const rows = (jobs || []) as Array<{ id: string; title: string }>;
+         const rows = (jobs || []) as Array<{ id: string; title: string; apps?: number }>;
+
+         // Skip jobs with no applications to avoid making unnecessary API calls
+         const jobsWithApps = rows.filter((j) => (j.apps || 0) > 0).slice(0, 20);
+
+         if (jobsWithApps.length === 0) {
+            setApplications([]);
+            return;
+         }
 
          const appResults = await Promise.all(
-            rows.map(async (job) => {
-               const { applications: jobApps } = await apiCall(`/jobs/${job.id}/applications`, { requireAuth: true });
-               return ((jobApps || []) as EmployerApplication[]).map((app) => ({
-                  ...app,
-                  job_title: job.title,
-               }));
+            jobsWithApps.map(async (job) => {
+               try {
+                  const { applications: jobApps } = await apiCall(`/jobs/${job.id}/applications`, { requireAuth: true });
+                  return ((jobApps || []) as EmployerApplication[]).map((app) => ({
+                     ...app,
+                     job_title: job.title,
+                  }));
+               } catch {
+                  return [];
+               }
             })
          );
 
