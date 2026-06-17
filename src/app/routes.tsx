@@ -33,6 +33,7 @@ import EmployerInterviews from './pages/EmployerInterviews';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import TermsAndConditions from './pages/TermsAndConditions';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import VerifyEmail from './pages/VerifyEmail';
 import NotFound from './pages/NotFound';
 import CommunityBlogs from './pages/CommunityBlogs';
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'login', Component: Login },
       { path: 'signup', Component: Signup },
       { path: 'terms', Component: TermsAndConditions },
+      { path: 'privacy', Component: PrivacyPolicy },
       { path: 'verify-email', Component: VerifyEmail },
       { path: 'forgot-password', Component: ForgotPassword },
       { path: 'reset-password', Component: ResetPassword },

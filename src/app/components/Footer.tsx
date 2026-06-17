@@ -40,7 +40,7 @@ export function Footer() {
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm">
               <li><Link to="/terms" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Terms &amp; Conditions</Link></li>
-              <li><span className="text-gray-400">Privacy Policy</span></li>
+              <li><Link to="/privacy" className="text-gray-300 hover:text-[var(--rf-green)] transition-colors">Privacy Policy</Link></li>
             </ul>
           </div>
 
