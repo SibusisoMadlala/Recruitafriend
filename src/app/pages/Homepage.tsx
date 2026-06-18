@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../context/useAuth';
-import { 
+import {
   Search, MapPin, Briefcase, Heart, CheckCircle, TrendingUp,
   Users, Building2, DollarSign, Code, Heart as HeartIcon,
   Stethoscope, Wrench, ShoppingCart, GraduationCap, Hammer,
   Coffee, Scale, LandPlot, Palette, Truck
 } from 'lucide-react';
+import { LocationAutocomplete } from '../components/LocationAutocomplete';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
 import { resolveCompanyName } from '../lib/companyDisplay';
@@ -125,14 +126,12 @@ export default function Homepage() {
               </div>
               <div>
                 <div className="flex items-center space-x-2 border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-4 py-3 bg-white">
-                  <MapPin className="w-5 h-5 text-[var(--rf-muted)]" />
-                  <input
-                    type="text"
-                    placeholder="Province"
+                  <LocationAutocomplete
                     value={searchLocation}
-                    onChange={(e) => setSearchLocation(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    className="flex-1 outline-none text-[var(--rf-text)]"
+                    onChange={setSearchLocation}
+                    placeholder="Location"
+                    showIcon
+                    inputClassName="flex-1 outline-none text-[var(--rf-text)] bg-transparent"
                   />
                 </div>
               </div>

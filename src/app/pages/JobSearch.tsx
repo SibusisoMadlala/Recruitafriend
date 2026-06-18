@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Search, MapPin, DollarSign, Briefcase, Building2, Heart, CheckCircle, SlidersHorizontal } from 'lucide-react';
+import { LocationAutocomplete } from '../components/LocationAutocomplete';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
 import { resolveCompanyName, resolveCompanyLogo } from '../lib/companyDisplay';
@@ -137,13 +138,12 @@ export default function JobSearch() {
                       Location
                     </label>
                     <div className="flex items-center border border-[var(--rf-border)] rounded-[var(--rf-radius-md)] px-3 py-2">
-                      <MapPin className="w-4 h-4 text-[var(--rf-muted)] mr-2" />
-                      <input
-                        type="text"
+                      <LocationAutocomplete
                         value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="Province or city..."
-                        className="flex-1 outline-none text-sm"
+                        onChange={setLocation}
+                        placeholder="City or location..."
+                        showIcon
+                        inputClassName="flex-1 outline-none text-sm bg-transparent"
                       />
                     </div>
                   </div>

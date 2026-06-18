@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { apiCall } from '../lib/supabase';
 import { toast } from 'sonner';
-import { 
+import {
   Building2, MapPin, Globe, Upload, CheckCircle, Video,
   Linkedin, Facebook, Instagram, Twitter, ChevronRight, Check, Loader2
 } from 'lucide-react';
+import { LocationAutocomplete } from '../components/LocationAutocomplete';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
@@ -348,17 +349,12 @@ export default function PostJob() {
                 </div>
 
                 <div className="space-y-2">
-                    <Label>Province</Label>
-                    <Select onValueChange={(v) => setValue('province', v)}>
-                      <SelectTrigger>
-                         <SelectValue placeholder="Select Province" />
-                      </SelectTrigger>
-                      <SelectContent>
-                         {PROVINCE_OPTIONS.map((option) => (
-                           <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                         ))}
-                      </SelectContent>
-                   </Select>
+                    <Label>Location</Label>
+                    <LocationAutocomplete
+                      value={watch('province') || ''}
+                      onChange={(v) => setValue('province', v)}
+                      placeholder="e.g. Cape Town, Johannesburg..."
+                    />
                 </div>
 
                 <div className="space-y-2">
