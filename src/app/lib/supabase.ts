@@ -527,6 +527,31 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   }
   // NOTE: Public /jobs and /jobs/:id are intentionally served by the edge endpoint
   // so employer identity (name/logo/profile fields) remains consistent.
+  if (effectiveUser && method === 'GET' && normalizedEndpoint === '/employer/applications') {
+    await assertApprovedEmployer(effectiveUser.id);
+    const { data: jobs } = await supabase.from('jobs').select('id, title').eq('employer_id', effectiveUser.id);
+    const jobIds = (jobs || []).map((j: Record<string, unknown>) => j.id as string);
+    const jobTitleMap: Record<string, string> = {};
+    (jobs || []).forEach((j: Record<string, unknown>) => { jobTitleMap[j.id as string] = j.title as string; });
+    if (jobIds.length === 0) return { applications: [] };
+    const { data: applications } = await supabase
+      .from('applications')
+      .select('id, job_id, seeker_id, status, notes, created_at, updated_at')
+      .in('job_id', jobIds)
+      .order('created_at', { ascending: false });
+    const seekerIds = [...new Set((applications || []).map((a: Record<string, unknown>) => a.seeker_id as string))];
+    const { data: profiles } = seekerIds.length > 0
+      ? await supabase.from('profiles').select('id, name, email, headline').in('id', seekerIds)
+      : { data: [] };
+    const profileMap: Record<string, unknown> = {};
+    (profiles || []).forEach((p: Record<string, unknown>) => { profileMap[p.id as string] = p; });
+    const enriched = (applications || []).map((a: Record<string, unknown>) => ({
+      ...a,
+      job_title: jobTitleMap[a.job_id as string] || '',
+      seeker: profileMap[a.seeker_id as string] || null,
+    }));
+    return { applications: enriched };
+  }
   if (effectiveUser && method === 'GET' && endpoint.includes('/employer/jobs')) {
     await assertApprovedEmployer(effectiveUser.id);
     const { data: jobs } = await supabase.from('jobs').select('*').eq('employer_id', effectiveUser.id).order('created_at', { ascending: false });
