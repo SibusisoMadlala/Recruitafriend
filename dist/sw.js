@@ -1,4 +1,4 @@
-const CACHE = 'rf-v3';
+const CACHE = 'rf-v4';
 const SHELL = ['/', '/offline.html'];
 
 self.addEventListener('install', (e) => {
@@ -46,6 +46,7 @@ self.addEventListener('push', (e) => {
     body: data.body || '',
     icon: '/icon-192.png',
     tag: data.tag || 'rf-notification',
+    renotify: true,
     data: { url: data.url || '/' },
   };
 
