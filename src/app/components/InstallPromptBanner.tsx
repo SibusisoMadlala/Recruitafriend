@@ -19,11 +19,11 @@ export function InstallPromptBanner() {
     const today = new Date().toDateString();
     if (localStorage.getItem(SHOWN_KEY) === today) return;
 
-    // Small delay so page content loads before the banner slides in
+    // Small delay so the page has rendered before the banner slides in
     const t = setTimeout(() => {
       setShow(true);
       localStorage.setItem(SHOWN_KEY, today);
-    }, 3000);
+    }, 500);
 
     return () => clearTimeout(t);
   }, []);
