@@ -288,6 +288,7 @@ export default function EmployerApplicants() {
         applicationId={activeCall.id}
         candidateName={activeCall.seeker?.name}
         jobTitle={jobs.find(j => j.id === activeCall.job_id)?.title}
+        isHost={true}
         onClose={() => setActiveCall(null)}
       />
     )}

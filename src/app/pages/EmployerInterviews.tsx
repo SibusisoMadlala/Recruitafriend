@@ -147,6 +147,7 @@ export default function EmployerInterviews() {
           applicationId={activeCall.id}
           candidateName={candidateLabel(activeCall)}
           jobTitle={activeCall.job_title}
+          isHost={true}
           onClose={() => setActiveCall(null)}
         />
       )}
