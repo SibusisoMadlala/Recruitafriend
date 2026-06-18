@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { InstallPromptBanner } from '../components/InstallPromptBanner';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -20,6 +21,7 @@ export default function Root() {
         <Outlet />
       </main>
       <Footer />
+      <InstallPromptBanner />
     </div>
   );
 }
