@@ -10,7 +10,7 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { apiCall } from '../lib/supabase';
+import { apiCall, supabase } from '../lib/supabase';
 import { VideoCallRoom } from '../components/VideoCallRoom';
 
 type EmployerApplication = {
@@ -111,6 +111,22 @@ export default function EmployerInterviews() {
       setSchedulingApp(null);
       setScheduledAt('');
       if (immediate) setActiveCall({ ...app, status: 'interview', notes });
+
+      // Fire push notification to candidate (best-effort, don't block UI)
+      if (app.seeker_id) {
+        const notifBody = immediate
+          ? `Your interview for ${app.job_title || 'a position'} is starting now. Open the app to join.`
+          : `You have an interview request for ${app.job_title || 'a position'}. Tap to view and confirm.`;
+        supabase.functions.invoke('send-push', {
+          body: {
+            seeker_id: app.seeker_id,
+            title: '📅 Interview ' + (immediate ? 'Starting Now' : 'Request'),
+            body: notifBody,
+            url: '/seeker/interviews',
+            tag: 'interview',
+          },
+        }).catch(() => {}); // silent — notification is optional
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to send interview request');
     } finally {

@@ -1,4 +1,4 @@
-const CACHE = 'rf-v1';
+const CACHE = 'rf-v2';
 const SHELL = ['/', '/offline.html'];
 
 self.addEventListener('install', (e) => {
@@ -20,7 +20,6 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  // Only cache same-origin navigation requests; let API calls go through
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/functions/') || url.pathname.startsWith('/rest/')) return;
 
@@ -34,5 +33,41 @@ self.addEventListener('fetch', (e) => {
         return res;
       })
       .catch(() => caches.match(e.request).then((cached) => cached || caches.match('/')))
+  );
+});
+
+// ── Push notification handler ──────────────────────────────────────────
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data?.json() ?? {}; } catch {}
+
+  const title = data.title || 'RecruitFriend';
+  const options = {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: data.tag || 'rf-notification',
+    data: { url: data.url || '/' },
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
+    actions: data.actions || [],
+  };
+
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification click — open/focus the app ────────────────────────────
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = e.notification.data?.url || '/';
+
+  e.waitUntil(
+    clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((cs) => {
+        const existing = cs.find((c) => c.url.endsWith(target) || c.url === self.location.origin + target);
+        if (existing) return existing.focus();
+        return clients.openWindow(target);
+      })
   );
 });

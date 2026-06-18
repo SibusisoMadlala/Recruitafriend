@@ -8,6 +8,7 @@ import {
   ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight
 } from 'lucide-react';
 import { VideoCallRoom } from '../components/VideoCallRoom';
+import { NotificationPermissionBanner } from '../components/NotificationPermissionBanner';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -124,6 +125,7 @@ export default function SeekerDashboard() {
       />
     )}
     <div className="space-y-8">
+      {user && <NotificationPermissionBanner userId={user.id} />}
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[var(--rf-navy)] to-[#1a3a5f] text-white rounded-[var(--rf-radius-lg)] p-8 shadow-lg relative overflow-hidden">
         <div className="relative z-10">

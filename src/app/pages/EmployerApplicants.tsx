@@ -15,7 +15,7 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { apiCall } from '../lib/supabase';
+import { apiCall, supabase } from '../lib/supabase';
 import { VideoCallRoom } from '../components/VideoCallRoom';
 
 const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
@@ -170,6 +170,24 @@ export default function EmployerApplicants() {
       ));
       toast.success(immediate ? 'Interview started!' : 'Interview request sent to candidate.');
       if (immediate) setActiveCall(interviewTarget);
+
+      // Push notification to candidate (best-effort)
+      const seekerId = (interviewTarget as any).seeker_id;
+      const jobTitle = (interviewTarget as any).job_title || 'a position';
+      if (seekerId) {
+        supabase.functions.invoke('send-push', {
+          body: {
+            seeker_id: seekerId,
+            title: '📅 Interview ' + (immediate ? 'Starting Now' : 'Request'),
+            body: immediate
+              ? `Your interview for ${jobTitle} is starting now. Open the app to join.`
+              : `You have an interview request for ${jobTitle}. Tap to view and confirm.`,
+            url: '/seeker/interviews',
+            tag: 'interview',
+          },
+        }).catch(() => {});
+      }
+
       setInterviewTarget(null);
       setScheduledAt('');
     } catch (err: any) {
