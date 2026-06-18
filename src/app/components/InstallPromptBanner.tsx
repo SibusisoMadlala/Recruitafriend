@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Smartphone } from 'lucide-react';
 
-const SHOWN_KEY = 'rf_install_shown_v3';
+const SHOWN_KEY = 'rf_install_shown_v4';
 
 export function InstallPromptBanner() {
   const [show, setShow] = useState(false);
