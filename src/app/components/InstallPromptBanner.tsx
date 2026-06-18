@@ -19,8 +19,12 @@ export function InstallPromptBanner() {
     const today = new Date().toDateString();
     if (localStorage.getItem(SHOWN_KEY) === today) return;
 
-    localStorage.setItem(SHOWN_KEY, today);
-    const t = setTimeout(() => setShow(true), 500);
+    // Set the key inside the timeout so StrictMode's double-invoke
+    // doesn't pre-write it before the banner actually renders.
+    const t = setTimeout(() => {
+      localStorage.setItem(SHOWN_KEY, today);
+      setShow(true);
+    }, 500);
     return () => clearTimeout(t);
   }, []);
 
