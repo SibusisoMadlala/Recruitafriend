@@ -4,17 +4,61 @@
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <link rel="icon" href="/favicon-zoom.png" sizes="any" />
-      <link rel="icon" type="image/png" href="/favicon-zoom.png" />
-      <link rel="shortcut icon" href="/favicon-zoom.png" />
-      <link rel="apple-touch-icon" href="/favicon-zoom.png" />
-      <title>RecruitFriend</title>
-      <script type="module" crossorigin src="/assets/index-DOusnE6j.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-CCR51A02.css">
+
+      <!-- Favicon — shown in browser tabs and Google search results -->
+      <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+      <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+      <link rel="shortcut icon" href="/icon-512.png" />
+
+      <!-- iOS home screen icon -->
+      <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+
+      <!-- PWA manifest -->
+      <link rel="manifest" href="/manifest.json" />
+      <meta name="theme-color" content="#0A2540" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+      <meta name="apple-mobile-web-app-title" content="RecruitFriend" />
+
+      <!-- SEO & Google preview -->
+      <title>RecruitFriend — Find Jobs &amp; Hire Talent in South Africa</title>
+      <meta name="description" content="RecruitFriend connects job seekers with top employers across South Africa. Search thousands of jobs, build your profile, and get hired faster." />
+      <meta name="robots" content="index, follow" />
+
+      <!-- Open Graph — controls the image shown when shared on WhatsApp, LinkedIn, Facebook, and in Google rich results -->
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="RecruitFriend" />
+      <meta property="og:title" content="RecruitFriend — Find Jobs &amp; Hire Talent in South Africa" />
+      <meta property="og:description" content="RecruitFriend connects job seekers with top employers across South Africa." />
+      <meta property="og:image" content="/icon-512.png" />
+      <meta property="og:image:width" content="512" />
+      <meta property="og:image:height" content="512" />
+
+      <!-- Twitter / X card -->
+      <meta name="twitter:card" content="summary" />
+      <meta name="twitter:title" content="RecruitFriend" />
+      <meta name="twitter:description" content="Find jobs and hire talent across South Africa." />
+      <meta name="twitter:image" content="/icon-512.png" />
+      <script type="module" crossorigin src="/assets/index-D6xppHdu.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-CPCGZvnh.css">
     </head>
 
     <body>
-      <div id="root"></div>
+      <div id="root"></div>
+      <script>
+        // Capture install prompt immediately — before React mounts — so it's never missed
+        window.addEventListener('beforeinstallprompt', function(e) {
+          e.preventDefault();
+          window.__rfInstallPrompt = e;
+          window.dispatchEvent(new Event('rf-install-ready'));
+        });
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js').catch(function () {});
+          });
+        }
+      </script>
     </body>
   </html>
   
