@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Video, Calendar, Clock, Loader2, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { Video, Calendar, Clock, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiCall } from '../lib/supabase';
 import type { Application } from '../types';
 import { resolveAppCompanyName } from '../lib/companyDisplay';
+import { VideoCallRoom } from '../components/VideoCallRoom';
 
 const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
 
@@ -12,27 +12,28 @@ type InterviewMeta = {
   scheduled_at?: string;
   link?: string;
   completed_at?: string;
+  confirmed?: boolean;
+  immediate?: boolean;
 };
 
 function parseInterviewMeta(notes?: string | null): InterviewMeta | null {
   if (!notes || !notes.startsWith(INTERVIEW_PREFIX)) return null;
-  try {
-    return JSON.parse(notes.slice(INTERVIEW_PREFIX.length)) as InterviewMeta;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(notes.slice(INTERVIEW_PREFIX.length)) as InterviewMeta; }
+  catch { return null; }
+}
+
+function toInterviewNotes(meta: InterviewMeta) {
+  return `${INTERVIEW_PREFIX}${JSON.stringify(meta)}`;
 }
 
 export default function VideoInterviews() {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('upcoming');
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+  const [activeCall, setActiveCall] = useState<Application | null>(null);
   const [testingDevices, setTestingDevices] = useState(false);
 
-  useEffect(() => {
-    loadInterviews();
-  }, []);
+  useEffect(() => { loadInterviews(); }, []);
 
   async function loadInterviews() {
     setLoading(true);
@@ -50,8 +51,8 @@ export default function VideoInterviews() {
     setTestingDevices(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      stream.getTracks().forEach((track) => track.stop());
-      toast.success('Audio and video access look good');
+      stream.getTracks().forEach((t) => t.stop());
+      toast.success('Camera and microphone look good');
     } catch {
       toast.error('Could not access camera/microphone. Check browser permissions.');
     } finally {
@@ -59,153 +60,196 @@ export default function VideoInterviews() {
     }
   }
 
-  const upcomingInterviews = useMemo(
-    () =>
-      applications.filter((app) => {
-        if (app.status !== 'interview') return false;
-        const meta = parseInterviewMeta(app.notes);
-        return !meta?.completed_at;
-      }),
-    [applications]
-  );
+  async function handleAccept(app: Application) {
+    setWorkingId(app.id);
+    try {
+      const current = parseInterviewMeta(app.notes) || {};
+      const notes = toInterviewNotes({ ...current, confirmed: true });
+      const { application: updated } = await apiCall(`/applications/${app.id}`, {
+        requireAuth: true, method: 'PUT',
+        body: JSON.stringify({ status: 'interview', notes }),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === app.id ? { ...a, notes: updated.notes } : a
+      ));
+      toast.success('Interview accepted!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to accept');
+    } finally {
+      setWorkingId(null);
+    }
+  }
 
-  const onDemandInterviews = useMemo(
-    () => applications.filter((app) => app.status === 'shortlisted'),
-    [applications]
-  );
+  async function handleDecline(app: Application) {
+    setWorkingId(app.id);
+    try {
+      await apiCall(`/applications/${app.id}`, {
+        requireAuth: true, method: 'PUT',
+        body: JSON.stringify({ status: 'shortlisted', notes: '' }),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === app.id ? { ...a, status: 'shortlisted', notes: '' } : a
+      ));
+      toast.success('Interview declined.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to decline');
+    } finally {
+      setWorkingId(null);
+    }
+  }
 
+  // Pending: status=interview, RF_INTERVIEW prefix, confirmed=false, no completed_at
+  const pending = useMemo(() => applications.filter(a => {
+    if (a.status !== 'interview') return false;
+    const meta = parseInterviewMeta(a.notes);
+    return meta !== null && !meta.confirmed && !meta.completed_at;
+  }), [applications]);
+
+  // Confirmed / immediate: status=interview, confirmed OR no prefix (legacy), not completed
+  const confirmed = useMemo(() => applications.filter(a => {
+    if (a.status !== 'interview') return false;
+    const meta = parseInterviewMeta(a.notes);
+    if (meta?.completed_at) return false;
+    return !meta || meta.confirmed || meta.immediate;
+  }), [applications]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-         <div>
-            <h1 className="text-3xl font-bold text-[var(--rf-navy)]">Video Interviews</h1>
-            <p className="text-[var(--rf-muted)]">Manage your upcoming calls and complete one-way interviews.</p>
-         </div>
-        <button
-          disabled={testingDevices}
-          onClick={testAudioVideo}
-          className="px-4 py-2 bg-blue-50 text-blue-700 font-semibold rounded-[var(--rf-radius-md)] text-sm border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-60"
-        >
-          {testingDevices ? 'Testing...' : 'Test Audio & Video'}
-         </button>
-      </div>
+    <>
+      {activeCall && (
+        <VideoCallRoom
+          applicationId={activeCall.id}
+          jobTitle={(activeCall as any).job?.title || (activeCall as any).job_title}
+          candidateName="You"
+          onClose={() => setActiveCall(null)}
+        />
+      )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <div className="flex space-x-8">
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-[var(--rf-navy)]">Video Interviews</h1>
+            <p className="text-[var(--rf-muted)]">Accept interview requests and join live video calls.</p>
+          </div>
           <button
-            onClick={() => setActiveTab('upcoming')}
-            className={`py-4 px-1 border-b-2 font-semibold text-sm transition-colors ${
-              activeTab === 'upcoming'
-                ? 'border-[var(--rf-green)] text-[var(--rf-green)]'
-                : 'border-transparent text-gray-500 hover:text-[var(--rf-navy)]'
-            }`}
+            disabled={testingDevices}
+            onClick={testAudioVideo}
+            className="px-4 py-2 bg-blue-50 text-blue-700 font-semibold rounded-[var(--rf-radius-md)] text-sm border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-60"
           >
-            Upcoming Interviews ({upcomingInterviews.length})
-          </button>
-          <button
-             onClick={() => setActiveTab('ondemand')}
-             className={`py-4 px-1 border-b-2 font-semibold text-sm transition-colors ${
-               activeTab === 'ondemand'
-                 ? 'border-[var(--rf-green)] text-[var(--rf-green)]'
-                 : 'border-transparent text-gray-500 hover:text-[var(--rf-navy)]'
-             }`}
-          >
-            On-Demand Interviews ({onDemandInterviews.length})
+            {testingDevices ? 'Testing...' : 'Test Camera & Mic'}
           </button>
         </div>
-      </div>
 
-      <div className="min-h-[400px]">
-        {loading && (
-          <div className="text-center py-12 text-gray-500">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3" />
-            <p>Loading interviews...</p>
+        {loading ? (
+          <div className="text-center py-16 text-gray-400">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+            <p>Loading your interviews...</p>
           </div>
-        )}
-
-        {activeTab === 'upcoming' && (
-          <div className="grid gap-6">
-             {!loading && upcomingInterviews.length > 0 ? (
-                 upcomingInterviews.map((interview) => {
-                    const meta = parseInterviewMeta(interview.notes);
-                    const hasScheduledDate = Boolean(meta?.scheduled_at);
-                    const scheduleLabel = hasScheduledDate
-                      ? new Date(meta?.scheduled_at as string).toLocaleString()
-                      : `Updated ${new Date(interview.updated_at || interview.created_at).toLocaleString()}`;
-
+        ) : (
+          <>
+            {/* Pending requests section */}
+            {pending.length > 0 && (
+              <div>
+                <h2 className="text-lg font-bold text-[var(--rf-navy)] mb-3 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-amber-500" />
+                  Interview Requests ({pending.length})
+                </h2>
+                <div className="grid gap-4">
+                  {pending.map(app => {
+                    const meta = parseInterviewMeta(app.notes)!;
                     return (
-                    <div key={interview.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 border-l-4 border-[var(--rf-navy)] flex flex-col md:flex-row md:items-center justify-between gap-4">
-                       <div>
-                        <h3 className="font-bold text-[var(--rf-navy)] text-lg">{interview.job_title || 'Interview'}</h3>
-                        <p className="text-sm text-[var(--rf-muted)] mb-2">{resolveAppCompanyName(interview)}</p>
-                        <div className="flex items-center text-xs text-gray-500">
-                          <Calendar className="w-3 h-3 mr-1" />
-                          {scheduleLabel}
-                        </div>
-                       </div>
-                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => navigate(`/jobs/${interview.job_id}`)}
-                          className="px-4 py-2 border border-gray-200 rounded-[var(--rf-radius-md)] text-sm font-semibold text-[var(--rf-navy)] hover:bg-gray-50"
-                        >
-                          View Job
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (!meta?.link) {
-                              toast.info('Interview link will appear here once scheduled by recruiter.');
-                              return;
-                            }
-                            window.open(meta.link, '_blank', 'noopener,noreferrer');
-                          }}
-                          className="px-4 py-2 bg-[var(--rf-green)] text-white rounded-[var(--rf-radius-md)] text-sm font-semibold hover:bg-[#00B548]"
-                        >
-                          {meta?.link ? 'Join Interview' : 'Join Waiting Room'}
-                        </button>
-                       </div>
-                    </div>
-                 )})
-             ) : (
-                !loading && <div className="text-center py-12 text-gray-500">
-                    <Video className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No upcoming interviews scheduled.</p>
-                </div>
-             )}
-          </div>
-        )}
-
-        {activeTab === 'ondemand' && (
-           <div className="grid gap-6">
-               {!loading && onDemandInterviews.length > 0 ? (
-                  onDemandInterviews.map((interview) => (
-                    <div key={interview.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6 border-l-4 border-purple-500 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div>
-                        <h3 className="font-bold text-[var(--rf-navy)] text-lg">{interview.job_title || 'On-demand interview'}</h3>
-                        <p className="text-sm text-[var(--rf-muted)] mb-2">{resolveAppCompanyName(interview)}</p>
-                        <div className="flex items-center text-xs text-gray-500">
-                          <Clock className="w-3 h-3 mr-1" />
-                          Complete your prep and response steps
+                      <div key={app.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 border-l-4 border-amber-400">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold text-[var(--rf-navy)] text-lg">{app.job_title || 'Interview Request'}</h3>
+                            <p className="text-sm text-[var(--rf-muted)]">{resolveAppCompanyName(app)}</p>
+                            {meta.scheduled_at && (
+                              <p className="flex items-center gap-1.5 text-sm text-amber-700 mt-2 font-medium">
+                                <Calendar className="w-4 h-4" />
+                                Proposed: {new Date(meta.scheduled_at).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              disabled={workingId === app.id}
+                              onClick={() => handleAccept(app)}
+                              className="flex items-center gap-1.5 px-4 py-2 bg-[#00C853] hover:bg-[#00B548] text-white text-sm font-semibold rounded-lg disabled:opacity-60 transition-colors"
+                            >
+                              {workingId === app.id
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <CheckCircle2 className="w-4 h-4" />}
+                              Accept
+                            </button>
+                            <button
+                              disabled={workingId === app.id}
+                              onClick={() => handleDecline(app)}
+                              className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-lg disabled:opacity-60 transition-colors"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Decline
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => navigate(`/seeker/video-assessment/${interview.id}`)}
-                        className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-[var(--rf-radius-md)] text-sm font-semibold hover:bg-purple-700"
-                      >
-                        Record Answers <ArrowRight className="w-4 h-4 ml-1" />
-                      </button>
-                    </div>
-                  ))
-               ) : (
-                !loading && <div className="text-center py-12 text-gray-500">
-                    <Clock className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No on-demand interviews pending.</p>
+                    );
+                  })}
                 </div>
-               )}
-           </div>
+              </div>
+            )}
+
+            {/* Confirmed / upcoming section */}
+            <div>
+              <h2 className="text-lg font-bold text-[var(--rf-navy)] mb-3 flex items-center gap-2">
+                <Video className="w-5 h-5 text-[var(--rf-green)]" />
+                Upcoming Interviews ({confirmed.length})
+              </h2>
+              {confirmed.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl text-gray-400">
+                  <Video className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="font-semibold text-[var(--rf-navy)]">No confirmed interviews yet</p>
+                  <p className="text-sm mt-1">
+                    {pending.length > 0
+                      ? 'Accept a request above to confirm one.'
+                      : 'Employers will send interview requests once they review your application.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {confirmed.map(app => {
+                    const meta = parseInterviewMeta(app.notes);
+                    return (
+                      <div key={app.id} className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-5 border-l-4 border-[var(--rf-green)]">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold text-[var(--rf-navy)] text-lg">{app.job_title || 'Interview'}</h3>
+                            <p className="text-sm text-[var(--rf-muted)]">{resolveAppCompanyName(app)}</p>
+                            {meta?.scheduled_at && !meta.immediate && (
+                              <p className="flex items-center gap-1.5 text-sm text-gray-500 mt-2">
+                                <Calendar className="w-4 h-4" />
+                                {new Date(meta.scheduled_at).toLocaleString()}
+                              </p>
+                            )}
+                            {meta?.immediate && (
+                              <p className="text-xs text-blue-600 mt-1 font-medium">Immediate / on-demand interview</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setActiveCall(app)}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--rf-green)] hover:bg-[#00B548] text-white text-sm font-semibold rounded-lg transition-colors"
+                          >
+                            <Video className="w-4 h-4" />
+                            Join Video Call
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
-    </div>
+    </>
   );
 }
