@@ -275,30 +275,6 @@ export default function SeekerCV() {
         )}
       </div>
 
-      {/* CV Visibility */}
-      <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Eye className="w-5 h-5 text-[var(--rf-green)]" />
-            <h2 className="font-bold text-[var(--rf-navy)]">CV Visibility</h2>
-          </div>
-          <div className="relative inline-block w-10 align-middle select-none">
-            <input
-              type="checkbox"
-              name="cv-visibility"
-              id="cv-visibility-toggle"
-              checked={settings.visibility}
-              onChange={(e) => saveSettings({ visibility: e.target.checked })}
-              disabled={saving}
-              className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer checked:right-0 checked:border-[var(--rf-green)]"
-            />
-            <label htmlFor="cv-visibility-toggle" className="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer" />
-          </div>
-        </div>
-        <p className="text-sm text-[var(--rf-muted)] mt-2">
-          Allow employers to discover your profile and CV in Talent Search.
-        </p>
-      </div>
 
       {/* Rename dialog */}
       <Dialog open={Boolean(editingFile)} onOpenChange={(open) => !open && setEditingFile(null)}>
