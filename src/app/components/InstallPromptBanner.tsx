@@ -13,11 +13,11 @@ export function InstallPromptBanner() {
       !!(navigator as any).standalone;
     if (isStandalone) return;
 
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      deferredPrompt.current = e;
+    const tryShow = () => {
+      const prompt = (window as any).__rfInstallPrompt;
+      if (!prompt) return;
+      deferredPrompt.current = prompt;
 
-      // Only show once per calendar day
       const today = new Date().toDateString();
       if (localStorage.getItem(SHOWN_KEY) === today) return;
 
@@ -27,9 +27,12 @@ export function InstallPromptBanner() {
       }, 500);
     };
 
-    window.addEventListener('beforeinstallprompt', onPrompt);
+    // Prompt may already be captured before this component mounted
+    tryShow();
+
+    window.addEventListener('rf-install-ready', tryShow);
     window.addEventListener('appinstalled', () => setShow(false));
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
+    return () => window.removeEventListener('rf-install-ready', tryShow);
   }, []);
 
   async function handleInstall() {

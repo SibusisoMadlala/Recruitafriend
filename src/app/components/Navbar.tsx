@@ -26,14 +26,18 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
   }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      deferredPrompt.current = e;
+    // Pick up prompt captured before React mounted
+    if ((window as any).__rfInstallPrompt) {
+      deferredPrompt.current = (window as any).__rfInstallPrompt;
+      setInstallReady(true);
+    }
+    const onReady = () => {
+      deferredPrompt.current = (window as any).__rfInstallPrompt;
       setInstallReady(true);
     };
-    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('rf-install-ready', onReady);
     window.addEventListener('appinstalled', () => { setInstallReady(false); deferredPrompt.current = null; });
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('rf-install-ready', onReady);
   }, []);
 
   async function handleInstall() {
