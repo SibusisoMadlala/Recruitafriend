@@ -6,22 +6,26 @@ import {
   unsubscribeFromPush,
   getNotificationPermission,
   isPushSupported,
+  isSubscribed,
 } from '../lib/pushNotifications';
 
 export default function SeekerNotifications() {
   const { user } = useAuth();
   const [permission, setPermission] = useState<string>(() => getNotificationPermission());
+  const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setPermission(getNotificationPermission());
+    isSubscribed().then(setSubscribed);
   }, []);
 
   async function handleEnable() {
     if (!user) return;
     setLoading(true);
-    await subscribeToPush(user.id);
+    const ok = await subscribeToPush(user.id);
     setPermission(getNotificationPermission());
+    setSubscribed(ok);
     setLoading(false);
   }
 
@@ -29,7 +33,7 @@ export default function SeekerNotifications() {
     if (!user) return;
     setLoading(true);
     await unsubscribeFromPush(user.id);
-    setPermission(getNotificationPermission());
+    setSubscribed(false);
     setLoading(false);
   }
 
@@ -44,8 +48,8 @@ export default function SeekerNotifications() {
 
       <div className="bg-white rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] p-6">
         <div className="flex items-start gap-4">
-          <div className={`p-3 rounded-full ${permission === 'granted' ? 'bg-green-50' : 'bg-gray-100'}`}>
-            {permission === 'granted'
+          <div className={`p-3 rounded-full ${subscribed ? 'bg-green-50' : 'bg-gray-100'}`}>
+            {subscribed
               ? <Bell className="w-6 h-6 text-[var(--rf-green)]" />
               : <BellOff className="w-6 h-6 text-gray-400" />
             }
@@ -64,14 +68,14 @@ export default function SeekerNotifications() {
                 </div>
               )}
 
-              {supported && permission === 'denied' && (
+              {supported && permission === 'denied' && !subscribed && (
                 <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-[var(--rf-radius-md)] px-3 py-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   Notifications are blocked. Go to your browser settings and allow notifications for this site.
                 </div>
               )}
 
-              {supported && permission === 'granted' && (
+              {supported && subscribed && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-[var(--rf-radius-md)] px-3 py-2">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -87,7 +91,7 @@ export default function SeekerNotifications() {
                 </div>
               )}
 
-              {supported && permission !== 'granted' && permission !== 'denied' && (
+              {supported && !subscribed && permission !== 'denied' && (
                 <button
                   onClick={handleEnable}
                   disabled={loading}

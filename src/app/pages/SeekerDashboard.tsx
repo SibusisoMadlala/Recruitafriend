@@ -8,7 +8,7 @@ import {
   ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight, Bell
 } from 'lucide-react';
 import { VideoCallRoom } from '../components/VideoCallRoom';
-import { subscribeToPush, getNotificationPermission } from '../lib/pushNotifications';
+import { subscribeToPush, getNotificationPermission, isSubscribed } from '../lib/pushNotifications';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -27,6 +27,7 @@ export default function SeekerDashboard() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [activeCall, setActiveCall] = useState<{ id: string; role: string } | null>(null);
   const [notifPermission, setNotifPermission] = useState<string>(() => getNotificationPermission());
+  const [notifSubscribed, setNotifSubscribed] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
   const [stats, setStats] = useState({
     applicationsSent: 0,
@@ -41,11 +42,16 @@ export default function SeekerDashboard() {
     }
   }, [user]);
 
+  useEffect(() => {
+    isSubscribed().then(setNotifSubscribed);
+  }, []);
+
   async function handleEnableNotifications() {
     if (!user || notifLoading) return;
     setNotifLoading(true);
-    await subscribeToPush(user.id);
+    const ok = await subscribeToPush(user.id);
     setNotifPermission(getNotificationPermission());
+    setNotifSubscribed(ok);
     setNotifLoading(false);
   }
 
@@ -146,7 +152,7 @@ export default function SeekerDashboard() {
               <Link to="/seeker/profile" className="inline-block px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md">
                 Complete Profile
               </Link>
-              {notifPermission === 'granted' ? (
+              {notifSubscribed ? (
                 <span className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] shadow-md">
                   <Bell className="w-4 h-4" />
                   Notifications On
