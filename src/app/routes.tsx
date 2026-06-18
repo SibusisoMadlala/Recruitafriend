@@ -21,6 +21,7 @@ import SeekerCV from './pages/SeekerCV';
 import SeekerAlerts from './pages/SeekerAlerts';
 import SeekerSavedJobs from './pages/SeekerSavedJobs';
 import SeekerApplications from './pages/SeekerApplications';
+import SeekerNotifications from './pages/SeekerNotifications';
 
 import EmployerDashboard from './pages/EmployerDashboard';
 import PostJob from './pages/PostJob';
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
       { path: 'video-assessment/:applicationId', Component: VideoAssessment },
       { path: 'network', Component: Networking },
       { path: 'subscriptions', Component: SeekerSubscriptions },
+      { path: 'notifications', Component: SeekerNotifications },
     ]
   },
   

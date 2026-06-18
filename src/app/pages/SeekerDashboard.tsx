@@ -5,10 +5,10 @@ import { apiCall } from '../lib/supabase';
 import type { Application, Job } from '../types';
 import { resolveAppCompanyName, resolveCompanyName } from '../lib/companyDisplay';
 import {
-  ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight
+  ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight, Bell
 } from 'lucide-react';
 import { VideoCallRoom } from '../components/VideoCallRoom';
-import { NotificationPermissionBanner } from '../components/NotificationPermissionBanner';
+import { subscribeToPush, getNotificationPermission, isPushSupported } from '../lib/pushNotifications';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -26,6 +26,8 @@ export default function SeekerDashboard() {
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [activeCall, setActiveCall] = useState<{ id: string; role: string } | null>(null);
+  const [notifPermission, setNotifPermission] = useState<string>(() => getNotificationPermission());
+  const [notifLoading, setNotifLoading] = useState(false);
   const [stats, setStats] = useState({
     applicationsSent: 0,
     profileViews: 0,
@@ -38,6 +40,17 @@ export default function SeekerDashboard() {
       loadDashboardData();
     }
   }, [user]);
+
+  async function handleEnableNotifications() {
+    if (!user || notifLoading) return;
+    setNotifLoading(true);
+    const ok = await subscribeToPush(user.id);
+    setNotifPermission(getNotificationPermission());
+    setNotifLoading(false);
+    if (!ok && Notification.permission === 'denied') {
+      // permission blocked — nothing to do silently
+    }
+  }
 
   async function loadDashboardData() {
     setDashboardLoading(true);
@@ -125,7 +138,6 @@ export default function SeekerDashboard() {
       />
     )}
     <div className="space-y-8">
-      {user && <NotificationPermissionBanner userId={user.id} />}
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[var(--rf-navy)] to-[#1a3a5f] text-white rounded-[var(--rf-radius-lg)] p-8 shadow-lg relative overflow-hidden">
         <div className="relative z-10">
@@ -133,9 +145,27 @@ export default function SeekerDashboard() {
             <p className="opacity-90 max-w-xl">
             You have <span className="font-bold text-[var(--rf-green)]">{stats.profileViews} new profile views</span> this week. Complete your profile to get more visibility.
             </p>
-            <Link to="/seeker/profile" className="inline-block mt-6 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md">
+            <div className="flex flex-wrap gap-3 mt-6">
+              <Link to="/seeker/profile" className="inline-block px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md">
                 Complete Profile
-            </Link>
+              </Link>
+              {isPushSupported() && notifPermission !== 'granted' && notifPermission !== 'denied' && (
+                <button
+                  onClick={handleEnableNotifications}
+                  disabled={notifLoading}
+                  className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md disabled:opacity-60"
+                >
+                  {notifLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                  Enable Notifications
+                </button>
+              )}
+              {isPushSupported() && notifPermission === 'granted' && (
+                <span className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] shadow-md opacity-80">
+                  <Bell className="w-4 h-4" />
+                  Notifications On
+                </span>
+              )}
+            </div>
         </div>
         <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
             <Briefcase className="w-64 h-64" />

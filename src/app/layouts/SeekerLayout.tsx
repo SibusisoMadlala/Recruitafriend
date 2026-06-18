@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth';
 import { calculateProfileCompletion } from '../lib/profileCompletion';
 import {
   LayoutDashboard, User, FileText, Briefcase, ClipboardList,
-  Video, Users, LogOut, Loader2, Heart, Edit3, Menu, X, BookOpen
+  Video, Users, LogOut, Loader2, Heart, Edit3, Menu, X, BookOpen, Bell
 } from 'lucide-react';
 
 export default function SeekerLayout() {
@@ -22,6 +22,7 @@ export default function SeekerLayout() {
       { icon: Video, label: 'Video Interviews', path: '/seeker/interviews' },
       { icon: Users, label: 'My Network', path: '/seeker/network' },
       { icon: BookOpen, label: 'Community', path: '/community' },
+      { icon: Bell, label: 'Notifications', path: '/seeker/notifications' },
     ],
     [],
   );
