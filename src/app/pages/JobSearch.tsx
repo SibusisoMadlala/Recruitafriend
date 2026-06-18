@@ -30,15 +30,23 @@ export default function JobSearch() {
   async function loadJobs() {
     setLoading(true);
     try {
+      // Read directly from URL so industry (and other params set by navigation) are always included
       const params = new URLSearchParams();
-      if (keyword) params.set('search', keyword);
-      if (location) params.set('location', location);
-      if (jobType) params.set('jobType', jobType);
-      if (minSalary) params.set('minSalary', minSalary);
-      if (maxSalary) params.set('maxSalary', maxSalary);
-      
+      const s = searchParams.get('search');
+      const l = searchParams.get('location');
+      const jt = searchParams.get('jobType');
+      const min = searchParams.get('minSalary');
+      const max = searchParams.get('maxSalary');
+      const ind = searchParams.get('industry');
+      if (s) params.set('search', s);
+      if (l) params.set('location', l);
+      if (jt) params.set('jobType', jt);
+      if (min) params.set('minSalary', min);
+      if (max) params.set('maxSalary', max);
+      if (ind) params.set('industry', ind);
+
       const { jobs: fetchedJobs } = await apiCall(`/jobs?${params.toString()}`);
-      setJobs(fetchedJobs);
+      setJobs(fetchedJobs || []);
     } catch (error) {
       console.error('Error loading jobs:', error);
       toast.error('Failed to load jobs');
@@ -54,6 +62,9 @@ export default function JobSearch() {
     if (jobType) params.set('jobType', jobType);
     if (minSalary) params.set('minSalary', minSalary);
     if (maxSalary) params.set('maxSalary', maxSalary);
+    // Preserve industry filter set by homepage navigation
+    const ind = searchParams.get('industry');
+    if (ind) params.set('industry', ind);
     setSearchParams(params);
   };
 
@@ -96,7 +107,12 @@ export default function JobSearch() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[var(--rf-navy)] mb-2">
-            {jobs.length} Jobs Found
+            {loading ? 'Loading...' : `${jobs.length} Jobs Found`}
+            {searchParams.get('industry') && (
+              <span className="ml-3 text-lg font-medium text-[var(--rf-green)]">
+                in {searchParams.get('industry')}
+              </span>
+            )}
           </h1>
           <button
             onClick={() => setShowFilters(!showFilters)}
