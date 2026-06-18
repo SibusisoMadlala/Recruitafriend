@@ -8,6 +8,7 @@ import {
   ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight, Bell
 } from 'lucide-react';
 import { VideoCallRoom } from '../components/VideoCallRoom';
+import { subscribeToPush, getNotificationPermission } from '../lib/pushNotifications';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -25,6 +26,8 @@ export default function SeekerDashboard() {
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [activeCall, setActiveCall] = useState<{ id: string; role: string } | null>(null);
+  const [notifPermission, setNotifPermission] = useState<string>(() => getNotificationPermission());
+  const [notifLoading, setNotifLoading] = useState(false);
   const [stats, setStats] = useState({
     applicationsSent: 0,
     profileViews: 0,
@@ -37,6 +40,14 @@ export default function SeekerDashboard() {
       loadDashboardData();
     }
   }, [user]);
+
+  async function handleEnableNotifications() {
+    if (!user || notifLoading) return;
+    setNotifLoading(true);
+    await subscribeToPush(user.id);
+    setNotifPermission(getNotificationPermission());
+    setNotifLoading(false);
+  }
 
   async function loadDashboardData() {
     setDashboardLoading(true);
@@ -135,10 +146,21 @@ export default function SeekerDashboard() {
               <Link to="/seeker/profile" className="inline-block px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md">
                 Complete Profile
               </Link>
-              <Link to="/seeker/notifications" className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md">
-                <Bell className="w-4 h-4" />
-                Enable Notifications
-              </Link>
+              {notifPermission === 'granted' ? (
+                <span className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] shadow-md">
+                  <Bell className="w-4 h-4" />
+                  Notifications On
+                </span>
+              ) : (
+                <button
+                  onClick={handleEnableNotifications}
+                  disabled={notifLoading || notifPermission === 'denied'}
+                  className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md disabled:opacity-60"
+                >
+                  {notifLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                  {notifPermission === 'denied' ? 'Notifications Blocked' : 'Enable Notifications'}
+                </button>
+              )}
             </div>
         </div>
         <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
