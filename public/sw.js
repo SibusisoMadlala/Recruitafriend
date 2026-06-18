@@ -1,4 +1,4 @@
-const CACHE = 'rf-v2';
+const CACHE = 'rf-v3';
 const SHELL = ['/', '/offline.html'];
 
 self.addEventListener('install', (e) => {
@@ -45,12 +45,8 @@ self.addEventListener('push', (e) => {
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
     tag: data.tag || 'rf-notification',
     data: { url: data.url || '/' },
-    requireInteraction: true,
-    vibrate: [200, 100, 200],
-    actions: data.actions || [],
   };
 
   e.waitUntil(self.registration.showNotification(title, options));
