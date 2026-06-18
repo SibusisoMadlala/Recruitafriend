@@ -3792,6 +3792,54 @@ app.get('/make-server-bca21fd3/profile/views', async (c) => {
   return c.json({ views: count ?? 0 });
 });
 
+// ============== VIDEO ROOMS (Daily.co) ==============
+
+app.get('/make-server-bca21fd3/video-room/:applicationId', async (c) => {
+  const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  const applicationId = c.req.param('applicationId');
+  const roomName = `rf${applicationId.replace(/-/g, '').substring(0, 18)}`;
+  const apiKey = Deno.env.get('DAILY_API_KEY');
+
+  if (!apiKey) return c.json({ error: 'Video service not configured' }, 503);
+
+  // Try existing room first
+  const getRes = await fetch(`https://api.daily.co/v1/rooms/${roomName}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (getRes.ok) {
+    const room = await getRes.json();
+    return c.json({ url: room.url });
+  }
+
+  // Create room
+  const createRes = await fetch('https://api.daily.co/v1/rooms', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: roomName,
+      privacy: 'public',
+      properties: {
+        enable_screenshare: true,
+        enable_chat: true,
+        start_video_off: false,
+        start_audio_off: false,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // expires in 7 days
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const err = await createRes.text();
+    console.error('Daily room creation failed:', err);
+    return c.json({ error: 'Failed to create video room' }, 500);
+  }
+
+  const room = await createRes.json();
+  return c.json({ url: room.url });
+});
+
 // ============== PLATFORM STATS ==============
 
 app.get('/make-server-bca21fd3/stats', async (c) => {
