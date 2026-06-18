@@ -3777,12 +3777,19 @@ app.delete('/make-server-bca21fd3/saved-jobs/:jobId', async (c) => {
   }
 });
 
-// ============== PROFILE VIEWS (stub) ==============
+// ============== PROFILE VIEWS ==============
 
 app.get('/make-server-bca21fd3/profile/views', async (c) => {
   const user = await getAuthUser(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  return c.json({ views: 0 });
+  const db = getDb();
+  // Count distinct employers who have moved this seeker's application past 'applied'
+  const { count } = await db
+    .from('applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('seeker_id', user.id)
+    .neq('status', 'applied');
+  return c.json({ views: count ?? 0 });
 });
 
 // ============== PLATFORM STATS ==============
