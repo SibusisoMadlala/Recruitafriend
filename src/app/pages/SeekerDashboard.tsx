@@ -7,6 +7,7 @@ import { resolveAppCompanyName, resolveCompanyName } from '../lib/companyDisplay
 import {
   ClipboardList, Eye, Heart, DollarSign, Briefcase, Loader2, Video, Calendar, ArrowRight
 } from 'lucide-react';
+import { VideoCallRoom } from '../components/VideoCallRoom';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -23,6 +24,7 @@ export default function SeekerDashboard() {
   const [recommendedStart, setRecommendedStart] = useState(0);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [activeCall, setActiveCall] = useState<{ id: string; role: string } | null>(null);
   const [stats, setStats] = useState({
     applicationsSent: 0,
     profileViews: 0,
@@ -81,20 +83,17 @@ export default function SeekerDashboard() {
       .filter((app) => app.status === 'interview')
       .map((app) => {
         let scheduledAt: string | null = null;
-        let link: string | null = null;
         if (app.notes?.startsWith(RF_INTERVIEW)) {
           try {
             const meta = JSON.parse(app.notes.slice(RF_INTERVIEW.length));
             scheduledAt = meta?.scheduled_at || null;
-            link = meta?.link || null;
           } catch {}
         }
         return {
           id: app.id,
           role: app.job_title || 'Interview',
           company: resolveAppCompanyName(app),
-          date: scheduledAt ? new Date(scheduledAt).toLocaleString() : 'Awaiting schedule from employer',
-          link,
+          date: scheduledAt ? new Date(scheduledAt).toLocaleString() : new Date().toLocaleString(),
         };
       });
   }, [applications]);
@@ -116,6 +115,14 @@ export default function SeekerDashboard() {
   }
 
   return (
+    <>
+    {activeCall && (
+      <VideoCallRoom
+        applicationId={activeCall.id}
+        jobTitle={activeCall.role}
+        onClose={() => setActiveCall(null)}
+      />
+    )}
     <div className="space-y-8">
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[var(--rf-navy)] to-[#1a3a5f] text-white rounded-[var(--rf-radius-lg)] p-8 shadow-lg relative overflow-hidden">
@@ -236,12 +243,11 @@ export default function SeekerDashboard() {
                     {interview.date}
                  </div>
                   <button
-                    onClick={() => interview.link ? window.open(interview.link, '_blank', 'noopener,noreferrer') : undefined}
-                    disabled={!interview.link}
-                    className={`w-full py-2 text-xs font-bold rounded transition-colors ${interview.link ? 'bg-[var(--rf-green)] text-white hover:bg-[#00B548] cursor-pointer' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                    title={interview.link ? 'Join your interview' : 'Waiting room opens when the employer shares the link'}
+                    onClick={() => setActiveCall({ id: interview.id, role: interview.role })}
+                    className="w-full py-2 text-xs font-bold rounded transition-colors bg-[var(--rf-green)] text-white hover:bg-[#00B548] cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    {interview.link ? 'Join Interview' : 'Join Waiting Room'}
+                    <Video className="w-3.5 h-3.5" />
+                    Join Video Call
                  </button>
                </div>
              )) : (
@@ -310,5 +316,6 @@ export default function SeekerDashboard() {
         </div>
       </div>
     </div>
+    </>
   );
 }
