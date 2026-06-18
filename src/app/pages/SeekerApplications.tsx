@@ -1,11 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Search, Eye, Paperclip, Upload, Trash2, FileText, X, Video } from 'lucide-react';
+import { Loader2, Search, Eye, Paperclip, Upload, Trash2, FileText, X, Video, CheckCircle2, XCircle, Calendar } from 'lucide-react';
 import { VideoCallRoom } from '../components/VideoCallRoom';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { apiCall, supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
 import type { Application } from '../types';
+
+type InterviewMeta = {
+  scheduled_at?: string;
+  link?: string;
+  completed_at?: string;
+  confirmed?: boolean;
+  immediate?: boolean;
+};
+
+const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
+
+function parseInterviewMeta(notes?: string | null): InterviewMeta | null {
+  if (!notes || !notes.startsWith(INTERVIEW_PREFIX)) return null;
+  try { return JSON.parse(notes.slice(INTERVIEW_PREFIX.length)) as InterviewMeta; }
+  catch { return null; }
+}
+
+function toInterviewNotes(meta: InterviewMeta) {
+  return `${INTERVIEW_PREFIX}${JSON.stringify(meta)}`;
+}
 import { resolveAppCompanyName } from '../lib/companyDisplay';
 import {
   Dialog,
@@ -184,6 +204,46 @@ export default function SeekerApplications() {
     }
   }
 
+  async function handleAcceptInterview(app: Application) {
+    setWorkingId(app.id);
+    try {
+      const current = parseInterviewMeta(app.notes) || {};
+      const notes = toInterviewNotes({ ...current, confirmed: true });
+      const { application: updated } = await apiCall(`/applications/${app.id}`, {
+        requireAuth: true,
+        method: 'PUT',
+        body: JSON.stringify({ status: 'interview', notes }),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === app.id ? { ...a, notes: updated.notes } : a
+      ));
+      toast.success('Interview accepted! You will receive a video call link on the day.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to accept interview');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function handleDeclineInterview(app: Application) {
+    setWorkingId(app.id);
+    try {
+      await apiCall(`/applications/${app.id}`, {
+        requireAuth: true,
+        method: 'PUT',
+        body: JSON.stringify({ status: 'shortlisted', notes: '' }),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === app.id ? { ...a, status: 'shortlisted', notes: '' } : a
+      ));
+      toast.success('Interview declined.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to decline interview');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
   const statusTabs = ['All', 'Applied', 'Viewed', 'Shortlisted', 'Interview', 'Offer', 'Rejected'];
 
   const getStatusColor = (status: string) => {
@@ -313,15 +373,57 @@ export default function SeekerApplications() {
                     {app.status === 'rejected' && (
                        <button onClick={() => navigate('/jobs')} className="text-sm font-semibold text-[var(--rf-muted)] hover:text-[var(--rf-green)]">Find Similar Jobs</button>
                     )}
-                    {app.status === 'interview' && (
-                       <button
-                         onClick={() => setActiveCall(app)}
-                         className="flex items-center gap-1 text-sm font-semibold text-white bg-[#00C853] hover:bg-[#00B548] px-3 py-1.5 rounded-md transition-colors"
-                       >
-                         <Video className="w-3.5 h-3.5" />
-                         Join Video Call
-                       </button>
-                    )}
+                    {app.status === 'interview' && (() => {
+                      const meta = parseInterviewMeta(app.notes);
+                      const isPending = meta && !meta.confirmed && !meta.immediate;
+                      if (isPending) {
+                        return (
+                          <div className="flex flex-col items-end gap-1.5">
+                            {meta?.scheduled_at && (
+                              <span className="flex items-center gap-1 text-xs text-amber-600">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(meta.scheduled_at).toLocaleString()}
+                              </span>
+                            )}
+                            <div className="flex gap-1.5">
+                              <button
+                                disabled={workingId === app.id}
+                                onClick={() => handleAcceptInterview(app)}
+                                className="flex items-center gap-1 text-xs font-semibold text-white bg-[#00C853] hover:bg-[#00B548] px-2.5 py-1.5 rounded-md disabled:opacity-60"
+                              >
+                                {workingId === app.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                Accept
+                              </button>
+                              <button
+                                disabled={workingId === app.id}
+                                onClick={() => handleDeclineInterview(app)}
+                                className="flex items-center gap-1 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1.5 rounded-md disabled:opacity-60"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                Decline
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-col items-end gap-1">
+                          {meta?.scheduled_at && !meta.immediate && (
+                            <span className="flex items-center gap-1 text-xs text-gray-400">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(meta.scheduled_at).toLocaleString()}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setActiveCall(app)}
+                            className="flex items-center gap-1 text-sm font-semibold text-white bg-[#00C853] hover:bg-[#00B548] px-3 py-1.5 rounded-md transition-colors"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            Join Video Call
+                          </button>
+                        </div>
+                      );
+                    })()}
                     {(app.status !== 'applied' && app.status !== 'viewed' && app.status !== 'shortlisted' && app.status !== 'rejected' && app.status !== 'interview') && (
                        <button onClick={() => navigate(`/jobs/${app.job_id}`)} className="text-sm font-semibold text-[var(--rf-green)] hover:underline">View Details</button>
                     )}
