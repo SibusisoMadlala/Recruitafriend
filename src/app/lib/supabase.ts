@@ -1327,7 +1327,13 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { count: count || 0 };
   }
   if (effectiveUser && method === 'GET' && normalizedEndpoint === '/profile/views') {
-    return { views: 0 };
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from('profile_views')
+      .select('id', { count: 'exact', head: true })
+      .eq('seeker_id', effectiveUser.id)
+      .gte('viewed_at', since);
+    return { views: count ?? 0 };
   }
   if (effectiveUser && method === 'POST' && normalizedEndpoint === '/referrals') {
     const refereeEmailRaw = String(requestBody.referee_email || requestBody.refereeEmail || '').trim().toLowerCase();
@@ -1565,6 +1571,14 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
     return { success: true };
   }
   // -------------------------------------------------------
+  }
+
+  // Log a profile view when an employer opens a seeker's profile
+  if (effectiveUser && method === 'GET' && /^\/employer\/seeker\/[^/]+$/.test(normalizedEndpoint)) {
+    const seekerId = normalizedEndpoint.split('/').pop();
+    if (seekerId) {
+      supabase.from('profile_views').insert({ viewer_id: effectiveUser.id, seeker_id: seekerId }).catch(() => {});
+    }
   }
 
   const canSkipAuthHeader = !requireAuth && isPublicEndpoint(endpoint, method);
