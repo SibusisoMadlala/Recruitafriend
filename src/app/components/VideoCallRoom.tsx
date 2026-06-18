@@ -10,7 +10,7 @@ interface Props {
 export function VideoCallRoom({ applicationId, candidateName, jobTitle, onClose }: Props) {
   // Derive a short, unique room name from the application ID
   const roomName = `RF-${applicationId.replace(/-/g, '').substring(0, 20)}`;
-  const jitsiUrl = `https://meet.jit.si/${roomName}`;
+  const jitsiUrl = `https://meet.jit.si/${roomName}#config.lobby.enabled=false&config.prejoinPageEnabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
 
   return (
     <div
