@@ -1,4 +1,4 @@
-const CACHE = 'rf-v4';
+const CACHE = 'rf-v5';
 const SHELL = ['/', '/offline.html'];
 
 self.addEventListener('install', (e) => {
@@ -56,6 +56,7 @@ self.addEventListener('push', (e) => {
 // ── Notification click — open/focus the app ────────────────────────────
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
+  if ('clearAppBadge' in self.registration) self.registration.clearAppBadge?.().catch(() => {});
   const target = e.notification.data?.url || '/';
 
   e.waitUntil(
