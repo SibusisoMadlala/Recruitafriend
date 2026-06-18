@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useParams } from 'react-router';
-import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video, Download, Paperclip, Loader2 as Loader } from 'lucide-react';
+import { Users, ChevronDown, MapPin, Mail, Phone, FileText, Video, Download, Paperclip, Loader2 as Loader, Calendar, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -11,8 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { apiCall } from '../lib/supabase';
+import { VideoCallRoom } from '../components/VideoCallRoom';
+
+const INTERVIEW_PREFIX = 'RF_INTERVIEW:';
+function toInterviewNotes(meta: object) {
+  return `${INTERVIEW_PREFIX}${JSON.stringify(meta)}`;
+}
 
 interface Job { id: string; title: string; apps: number; }
 interface Seeker {
@@ -68,6 +77,12 @@ export default function EmployerApplicants() {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
 
+  // Interview scheduling state
+  const [interviewTarget, setInterviewTarget] = useState<Application | null>(null);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [savingInterview, setSavingInterview] = useState(false);
+  const [activeCall, setActiveCall] = useState<Application | null>(null);
+
   const activeApplications = applications.filter((app) => COLUMNS.includes(app.status));
 
   // When a dialog opens and the nested seeker join returned null, fetch profile separately
@@ -111,13 +126,17 @@ export default function EmployerApplicants() {
   }, [selectedJobId]);
 
   async function moveStage(appId: string, status: string) {
+    // Intercept interview — show schedule/start-now dialog instead
+    if (status === 'interview') {
+      const app = applications.find(a => a.id === appId);
+      if (app) { setInterviewTarget(app); setScheduledAt(''); return; }
+    }
     try {
       const { application, emailDelivery } = await apiCall(`/applications/${appId}`, {
         requireAuth: true,
         method: 'PUT', body: JSON.stringify({ status }),
       });
       setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: application.status } : a));
-      
       const statusLabel = COLUMN_LABELS[status] || status;
       const seekerDelivery = emailDelivery?.seeker;
       if (seekerDelivery === 'sent' || seekerDelivery === 'deduplicated') {
@@ -130,6 +149,33 @@ export default function EmployerApplicants() {
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to update status');
+    }
+  }
+
+  async function confirmInterview(immediate: boolean) {
+    if (!interviewTarget) return;
+    setSavingInterview(true);
+    try {
+      const meta = immediate
+        ? { immediate: true, confirmed: true, scheduled_at: new Date().toISOString() }
+        : { scheduled_at: scheduledAt, confirmed: false };
+      const notes = toInterviewNotes(meta);
+      const { application } = await apiCall(`/applications/${interviewTarget.id}`, {
+        requireAuth: true,
+        method: 'PUT',
+        body: JSON.stringify({ status: 'interview', notes }),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === interviewTarget.id ? { ...a, status: application.status } : a
+      ));
+      toast.success(immediate ? 'Interview started!' : 'Interview request sent to candidate.');
+      if (immediate) setActiveCall(interviewTarget);
+      setInterviewTarget(null);
+      setScheduledAt('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to set interview');
+    } finally {
+      setSavingInterview(false);
     }
   }
 
@@ -236,6 +282,76 @@ export default function EmployerApplicants() {
   const selectedSeeker = (selectedApplication?.seeker?.name ? selectedApplication.seeker : fetchedSeeker) ?? selectedApplication?.seeker;
 
   return (
+    <>
+    {activeCall && (
+      <VideoCallRoom
+        applicationId={activeCall.id}
+        candidateName={activeCall.seeker?.name}
+        jobTitle={jobs.find(j => j.id === activeCall.job_id)?.title}
+        onClose={() => setActiveCall(null)}
+      />
+    )}
+
+    {/* Interview scheduling dialog */}
+    <Dialog open={Boolean(interviewTarget)} onOpenChange={(open) => !open && setInterviewTarget(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Schedule Interview</DialogTitle>
+          <DialogDescription>
+            Set up an interview with <strong>{interviewTarget?.seeker?.name || 'this candidate'}</strong>.
+            Choose to schedule a time or start a video call right now.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Start Now option */}
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
+            <p className="font-semibold text-[#0A2540] mb-1 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-blue-500" /> Start Interview Now
+            </p>
+            <p className="text-sm text-gray-500 mb-3">Open a video call immediately. The candidate can join from their applications page.</p>
+            <Button
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={savingInterview}
+              onClick={() => confirmInterview(true)}
+            >
+              {savingInterview ? <Loader className="w-4 h-4 mr-2 animate-spin" /> : <Video className="w-4 h-4 mr-2" />}
+              Start Video Call Now
+            </Button>
+          </div>
+
+          {/* Schedule option */}
+          <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+            <p className="font-semibold text-[#0A2540] mb-1 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#00C853]" /> Schedule for Later
+            </p>
+            <p className="text-sm text-gray-500 mb-3">Pick a date and time. The candidate will receive a request to accept.</p>
+            <div className="space-y-2">
+              <Label htmlFor="scheduleTime">Date & time</Label>
+              <Input
+                id="scheduleTime"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={e => setScheduledAt(e.target.value)}
+              />
+              <Button
+                className="w-full bg-[#00C853] hover:bg-[#00B548] text-white"
+                disabled={savingInterview || !scheduledAt}
+                onClick={() => confirmInterview(false)}
+              >
+                {savingInterview ? <Loader className="w-4 h-4 mr-2 animate-spin" /> : <Calendar className="w-4 h-4 mr-2" />}
+                Send Interview Request
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setInterviewTarget(null)}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <div className="flex h-full flex-col space-y-6 overflow-x-hidden">
 
       {/* Header */}
@@ -691,5 +807,6 @@ export default function EmployerApplicants() {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   );
 }
