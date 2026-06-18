@@ -98,19 +98,18 @@ export default function VideoInterviews() {
     }
   }
 
-  // Pending: status=interview, RF_INTERVIEW prefix, confirmed=false, no completed_at
+  // Pending requests: RF_INTERVIEW prefix, confirmed=false (need to accept/decline)
   const pending = useMemo(() => applications.filter(a => {
     if (a.status !== 'interview') return false;
     const meta = parseInterviewMeta(a.notes);
-    return meta !== null && !meta.confirmed && !meta.completed_at;
+    return meta !== null && !meta.confirmed && !meta.immediate && !meta.completed_at;
   }), [applications]);
 
-  // Confirmed / immediate: status=interview, confirmed OR no prefix (legacy), not completed
+  // All active interviews the seeker can join
   const confirmed = useMemo(() => applications.filter(a => {
     if (a.status !== 'interview') return false;
     const meta = parseInterviewMeta(a.notes);
-    if (meta?.completed_at) return false;
-    return !meta || meta.confirmed || meta.immediate;
+    return !meta?.completed_at;
   }), [applications]);
 
   return (
