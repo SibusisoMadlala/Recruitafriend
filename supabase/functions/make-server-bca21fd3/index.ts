@@ -1938,6 +1938,65 @@ app.get('/make-server-bca21fd3/jobs/:jobId/applications', async (c) => {
   }
 });
 
+// All applications across all employer jobs — used by Analytics and Interviews for fast bulk load
+app.get('/make-server-bca21fd3/employer/applications', async (c) => {
+  try {
+    const delegatedJwt = c.req.header('x-rf-user-jwt');
+    const auth = await requireApprovedEmployer(c.req.header('Authorization'), delegatedJwt);
+    if (!auth.user) {
+      if (auth.deniedPayload) {
+        return c.json({ error: auth.error, ...auth.deniedPayload }, auth.code);
+      }
+      return c.json({ error: auth.error }, auth.code);
+    }
+
+    const db = getDb();
+
+    // 1. Get all employer jobs (id + title only)
+    const { data: jobs, error: jobsErr } = await db
+      .from('jobs')
+      .select('id, title')
+      .eq('employer_id', auth.user.id);
+    if (jobsErr) throw jobsErr;
+
+    const jobIds = (jobs || []).map((j: any) => j.id as string);
+    if (jobIds.length === 0) return c.json({ applications: [] });
+
+    const jobTitleMap: Record<string, string> = {};
+    (jobs || []).forEach((j: any) => { jobTitleMap[j.id] = j.title; });
+
+    // 2. Fetch all applications for those jobs in one query
+    const { data: applications, error: appsErr } = await db
+      .from('applications')
+      .select('id, job_id, seeker_id, status, notes, created_at, updated_at')
+      .in('job_id', jobIds)
+      .order('created_at', { ascending: false });
+    if (appsErr) throw appsErr;
+
+    if (!applications || applications.length === 0) return c.json({ applications: [] });
+
+    // 3. Fetch seeker names/emails in one query
+    const seekerIds = [...new Set(applications.map((a: any) => a.seeker_id as string))];
+    const { data: profiles } = await db
+      .from('profiles')
+      .select('id, name, email, headline')
+      .in('id', seekerIds);
+    const profileMap: Record<string, any> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+
+    const enriched = applications.map((a: any) => ({
+      ...a,
+      job_title: jobTitleMap[a.job_id] || '',
+      seeker: profileMap[a.seeker_id] || null,
+    }));
+
+    return c.json({ applications: enriched });
+  } catch (error) {
+    console.error('Employer applications bulk error:', error);
+    return c.json({ error: 'Failed to load applications' }, 500);
+  }
+});
+
 // Get a seeker's profile by ID (employer use — to populate applicant profile dialog)
 app.get('/make-server-bca21fd3/employer/seeker/:seekerId', async (c) => {
   try {

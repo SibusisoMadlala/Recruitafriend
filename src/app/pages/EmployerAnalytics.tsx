@@ -41,27 +41,17 @@ export default function EmployerAnalytics() {
     (async () => {
       setLoading(true);
       try {
-        const { jobs } = await apiCall('/employer/jobs', { requireAuth: true });
+        // Two parallel calls instead of N+1 sequential calls
+        const [{ jobs }, { applications: allApps }] = await Promise.all([
+          apiCall('/employer/jobs', { requireAuth: true }),
+          apiCall('/employer/applications', { requireAuth: true }),
+        ]);
+
         const jobList: any[] = jobs || [];
+        const appsByJob: any[] = allApps || [];
+
         const totalViews = jobList.reduce((s: number, j: any) => s + (j.views || 0), 0);
 
-        // Only fetch applications for jobs that have them, cap at 20 to avoid timeout
-        const jobsWithApps = jobList.filter((j: any) => (j.apps || 0) > 0).slice(0, 20);
-
-        const appsByJob: any[] = (
-          await Promise.all(
-            jobsWithApps.map((j: any) =>
-              apiCall(`/jobs/${j.id}/applications`, { requireAuth: true })
-                .then(({ applications }) => applications || [])
-                .catch(() => [])
-            )
-          )
-        ).flat();
-
-        const totalApps = appsByJob.length;
-        const hired = appsByJob.filter((a: any) => a.status === 'offer' || a.status === 'interview').length;
-
-        // avg time-to-first-application per job (proxy for time-to-fill)
         let avgDays = 0;
         if (jobList.length > 0) {
           const daysList = jobList.map((j: any) => {
@@ -74,7 +64,7 @@ export default function EmployerAnalytics() {
           avgDays = daysList.length ? Math.round(daysList.reduce((a, b) => a + b, 0) / daysList.length) : 0;
         }
 
-        setStatsData({ views: totalViews, applications: totalApps, hired, avgDays });
+        setStatsData({ views: totalViews, applications: appsByJob.length, hired: 0, avgDays });
         setAllApplications(appsByJob);
       } catch (err: any) {
         toast.error(err.message || 'Failed to load analytics');
