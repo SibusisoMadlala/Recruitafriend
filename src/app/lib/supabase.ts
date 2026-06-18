@@ -594,9 +594,9 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
         `${message} ${text}`
       );
 
-      // For 4xx non-auth errors, surface the error directly.
-      // For 5xx server errors or auth failures, fall through to local fallback query.
-      if (!authGateFailure && serverResponse.status < 500) {
+      // For 4xx non-auth/non-forbidden errors, surface the error directly.
+      // For 5xx, 403, or auth failures, fall through to local fallback query.
+      if (!authGateFailure && serverResponse.status < 500 && serverResponse.status !== 403) {
         throw new Error(message || 'Failed to search candidates');
       }
       // Otherwise continue to local fallback query below.
