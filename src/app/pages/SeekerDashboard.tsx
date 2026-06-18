@@ -160,11 +160,11 @@ export default function SeekerDashboard() {
               ) : (
                 <button
                   onClick={handleEnableNotifications}
-                  disabled={notifLoading || notifPermission === 'denied'}
+                  disabled={notifLoading}
                   className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--rf-green)] text-white font-semibold rounded-[var(--rf-radius-md)] hover:bg-[#00B548] transition-colors shadow-md disabled:opacity-60"
                 >
                   {notifLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
-                  {notifPermission === 'denied' ? 'Notifications Blocked' : 'Enable Notifications'}
+                  Enable Notifications
                 </button>
               )}
             </div>
