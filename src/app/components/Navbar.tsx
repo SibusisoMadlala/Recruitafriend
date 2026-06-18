@@ -137,21 +137,13 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
 
           {/* Right Side */}
           <div className="hidden md:flex items-center space-x-3 lg:space-x-4">
-            {installReady ? (
+            {installReady && (
               <button
                 onClick={handleInstall}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--rf-radius-md)] border border-[var(--rf-green)] text-[var(--rf-green)] text-sm font-semibold hover:bg-green-50 transition-colors"
               >
                 <Download className="w-4 h-4" />
                 Download App
-              </button>
-            ) : (
-              <button
-                onClick={handleInstallGuide}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--rf-radius-md)] border border-[var(--rf-green)] text-[var(--rf-green)] text-sm font-semibold hover:bg-green-50 transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                Get App
               </button>
             )}
             {user ? (
@@ -211,21 +203,13 @@ export function Navbar({ hideMobileMenuToggle = false, fullWidth = false, classN
               ))}
 
               <div className="mt-2 border-t border-gray-100 pt-3 flex flex-col gap-2">
-                {installReady ? (
+                {installReady && (
                   <button
                     onClick={() => { setIsMobileMenuOpen(false); handleInstall(); }}
                     className="flex w-full items-center justify-center gap-2 rounded-[var(--rf-radius-md)] bg-green-50 border border-[var(--rf-green)] px-4 py-3 text-[var(--rf-green)] font-semibold transition-colors hover:bg-green-100"
                   >
                     <Download className="h-5 w-5" />
                     Download App
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => { setIsMobileMenuOpen(false); handleInstallGuide(); }}
-                    className="flex w-full items-center justify-center gap-2 rounded-[var(--rf-radius-md)] bg-green-50 border border-[var(--rf-green)] px-4 py-3 text-[var(--rf-green)] font-semibold transition-colors hover:bg-green-100"
-                  >
-                    <Download className="h-5 w-5" />
-                    Get App
                   </button>
                 )}
                 {user ? (

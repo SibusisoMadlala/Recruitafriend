@@ -5,56 +5,40 @@ const SHOWN_KEY = 'rf_install_shown_v4';
 
 export function InstallPromptBanner() {
   const [show, setShow] = useState(false);
-  const [installReady, setInstallReady] = useState(false);
   const deferredPrompt = useRef<any>(null);
 
   useEffect(() => {
-    // Never show inside the installed app
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       !!(navigator as any).standalone;
     if (isStandalone) return;
 
-    // Show once per calendar day
-    const today = new Date().toDateString();
-    if (localStorage.getItem(SHOWN_KEY) === today) return;
-
-    // Set the key inside the timeout so StrictMode's double-invoke
-    // doesn't pre-write it before the banner actually renders.
-    const t = setTimeout(() => {
-      localStorage.setItem(SHOWN_KEY, today);
-      setShow(true);
-    }, 500);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
     const onPrompt = (e: Event) => {
       e.preventDefault();
       deferredPrompt.current = e;
-      setInstallReady(true);
+
+      // Only show once per calendar day
+      const today = new Date().toDateString();
+      if (localStorage.getItem(SHOWN_KEY) === today) return;
+
+      setTimeout(() => {
+        localStorage.setItem(SHOWN_KEY, today);
+        setShow(true);
+      }, 500);
     };
+
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', () => setShow(false));
     return () => window.removeEventListener('beforeinstallprompt', onPrompt);
   }, []);
 
   async function handleInstall() {
-    if (deferredPrompt.current) {
-      deferredPrompt.current.prompt();
-      const { outcome } = await deferredPrompt.current.userChoice;
-      if (outcome === 'accepted') {
-        setShow(false);
-        deferredPrompt.current = null;
-      }
-    } else {
-      const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-      alert(
-        isIos
-          ? 'To install on iPhone:\n1. Tap Share (square with arrow)\n2. Tap "Add to Home Screen"\n3. Tap "Add"'
-          : 'To install:\n1. Open in Chrome\n2. Tap menu (three dots ⋮)\n3. Tap "Add to Home Screen" or "Install App"'
-      );
+    if (!deferredPrompt.current) return;
+    deferredPrompt.current.prompt();
+    const { outcome } = await deferredPrompt.current.userChoice;
+    if (outcome === 'accepted') {
       setShow(false);
+      deferredPrompt.current = null;
     }
   }
 
@@ -118,7 +102,7 @@ export function InstallPromptBanner() {
             flexShrink: 0,
           }}
         >
-          {installReady ? 'Install' : 'How to'}
+          Install
         </button>
         <button
           onClick={() => setShow(false)}
