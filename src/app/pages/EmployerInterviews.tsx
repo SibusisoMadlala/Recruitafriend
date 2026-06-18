@@ -16,6 +16,7 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { apiCall } from '../lib/supabase';
+import { VideoCallRoom } from '../components/VideoCallRoom';
 
 type EmployerApplication = {
    id: string;
@@ -62,6 +63,7 @@ export default function EmployerInterviews() {
    const [schedulingApp, setSchedulingApp] = useState<EmployerApplication | null>(null);
    const [scheduledAt, setScheduledAt] = useState('');
    const [meetingLink, setMeetingLink] = useState('');
+   const [activeCall, setActiveCall] = useState<EmployerApplication | null>(null);
 
    useEffect(() => {
       loadInterviews();
@@ -181,6 +183,15 @@ export default function EmployerInterviews() {
    }).length;
 
    return (
+      <>
+      {activeCall && (
+        <VideoCallRoom
+          applicationId={activeCall.id}
+          candidateName={activeCall.seeker?.name || activeCall.seeker?.email}
+          jobTitle={activeCall.job_title}
+          onClose={() => setActiveCall(null)}
+        />
+      )}
       <div className="space-y-6">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -260,16 +271,11 @@ export default function EmployerInterviews() {
                               </div>
                               <div className="flex flex-wrap gap-2">
                                  <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                       if (!meta?.link) {
-                                          toast.info('No interview link has been added yet');
-                                          return;
-                                       }
-                                       window.open(meta.link, '_blank', 'noopener,noreferrer');
-                                    }}
+                                    className="bg-[#00C853] hover:bg-[#00B548] text-white"
+                                    onClick={() => setActiveCall(interview)}
                                  >
-                                    Join Link
+                                    <Video className="w-4 h-4 mr-1.5" />
+                                    Start Video Call
                                  </Button>
                                  <Button variant="outline" onClick={() => {
                                     setSchedulingApp(interview);
@@ -407,5 +413,6 @@ export default function EmployerInterviews() {
             </DialogContent>
          </Dialog>
       </div>
+      </>
    );
 }

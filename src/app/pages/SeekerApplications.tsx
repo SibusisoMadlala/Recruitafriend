@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Search, Eye, Paperclip, Upload, Trash2, FileText, X } from 'lucide-react';
+import { Loader2, Search, Eye, Paperclip, Upload, Trash2, FileText, X, Video } from 'lucide-react';
+import { VideoCallRoom } from '../components/VideoCallRoom';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { apiCall, supabase } from '../lib/supabase';
@@ -40,6 +41,7 @@ export default function SeekerApplications() {
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [withdrawApp, setWithdrawApp] = useState<Application | null>(null);
+  const [activeCall, setActiveCall] = useState<Application | null>(null);
 
   // Supporting documents dialog state
   const [docsApp, setDocsApp] = useState<Application | null>(null);
@@ -212,6 +214,14 @@ export default function SeekerApplications() {
   }
 
   return (
+    <>
+    {activeCall && (
+      <VideoCallRoom
+        applicationId={activeCall.id}
+        jobTitle={(activeCall as any).job?.title || (activeCall as any).job_title}
+        onClose={() => setActiveCall(null)}
+      />
+    )}
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-[var(--rf-navy)]">My Applications</h1>
 
@@ -303,7 +313,16 @@ export default function SeekerApplications() {
                     {app.status === 'rejected' && (
                        <button onClick={() => navigate('/jobs')} className="text-sm font-semibold text-[var(--rf-muted)] hover:text-[var(--rf-green)]">Find Similar Jobs</button>
                     )}
-                    {(app.status !== 'applied' && app.status !== 'viewed' && app.status !== 'shortlisted' && app.status !== 'rejected') && (
+                    {app.status === 'interview' && (
+                       <button
+                         onClick={() => setActiveCall(app)}
+                         className="flex items-center gap-1 text-sm font-semibold text-white bg-[#00C853] hover:bg-[#00B548] px-3 py-1.5 rounded-md transition-colors"
+                       >
+                         <Video className="w-3.5 h-3.5" />
+                         Join Video Call
+                       </button>
+                    )}
+                    {(app.status !== 'applied' && app.status !== 'viewed' && app.status !== 'shortlisted' && app.status !== 'rejected' && app.status !== 'interview') && (
                        <button onClick={() => navigate(`/jobs/${app.job_id}`)} className="text-sm font-semibold text-[var(--rf-green)] hover:underline">View Details</button>
                     )}
                   </td>
@@ -418,5 +437,6 @@ export default function SeekerApplications() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </>
   );
 }
