@@ -75,8 +75,8 @@ export function LocationAutocomplete({
   }, []);
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
-      <div className={showIcon ? 'flex items-center gap-2' : ''}>
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      <div className={showIcon ? 'flex items-center gap-2 w-full' : 'w-full'}>
         {showIcon && <MapPin className="w-5 h-5 text-[var(--rf-muted)] flex-shrink-0" />}
         <input
           type="text"
