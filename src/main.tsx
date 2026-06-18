@@ -8,9 +8,12 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// Clear notification badge whenever the app is opened or focused
-function clearBadge() {
+// Clear badge + close all notifications when app is opened or focused
+function clearNotifications() {
   if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
+  navigator.serviceWorker.ready.then(reg => {
+    reg.getNotifications().then(list => list.forEach(n => n.close()));
+  }).catch(() => {});
 }
-clearBadge();
-document.addEventListener('visibilitychange', () => { if (!document.hidden) clearBadge(); });
+clearNotifications();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) clearNotifications(); });
