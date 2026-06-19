@@ -316,6 +316,15 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     channelRef.current?.send({ type: 'broadcast', event: 'hand', payload: { raised: next } });
   }, [handRaised]);
 
+  // Re-broadcast hand state every 3s so late joiners / reconnects always see it
+  useEffect(() => {
+    if (!handRaised) return;
+    const t = setInterval(() => {
+      channelRef.current?.send({ type: 'broadcast', event: 'hand', payload: { raised: true } });
+    }, 3000);
+    return () => clearInterval(t);
+  }, [handRaised]);
+
   const sendChat = useCallback(() => {
     const text = chatInput.trim();
     if (!text || !channelRef.current) return;
