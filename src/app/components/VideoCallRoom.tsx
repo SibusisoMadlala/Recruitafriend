@@ -9,7 +9,10 @@ import { supabase } from '../lib/supabase';
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
+  // TURN relay — required for mobile networks (carrier NAT blocks direct P2P)
+  { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 interface ChatMsg { from: string; text: string; ts: number; }
@@ -173,7 +176,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         setRemoteHandRaised((payload as any).raised);
       });
 
-      ch.on('presence', { event: 'join' }, () => {
+      // Candidate sends 'ready' → host (re)sends offer. Fixes race where offer
+      // arrives before candidate's broadcast handler is registered.
+      ch.on('broadcast', { event: 'ready' }, () => {
         if (isHost && offerRef.current && !pc.currentRemoteDescription) {
           ch.send({ type: 'broadcast', event: 'offer', payload: offerRef.current });
         }
@@ -190,6 +195,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             offerRef.current = offer;
             ch.send({ type: 'broadcast', event: 'offer', payload: offer });
           } catch (e) { console.error('create offer error', e); }
+        } else {
+          // Tell host we're here and ready to receive the offer
+          ch.send({ type: 'broadcast', event: 'ready', payload: {} });
         }
       });
     }
