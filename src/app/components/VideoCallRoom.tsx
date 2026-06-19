@@ -99,20 +99,32 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     let alive = true;
 
     async function start() {
-      // Fetch TURN credentials from edge function
+      // Fetch TURN credentials and camera in parallel — no extra wait time
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
-      try {
-        const { data } = await supabase.functions.invoke('get-turn');
-        if (data?.iceServers) iceServers = data.iceServers;
-      } catch {}
-
-      // Get local media
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
+        const [turnResult, mediaResult] = await Promise.allSettled([
+          supabase.functions.invoke('get-turn'),
+          navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          }),
+        ]);
+        if (turnResult.status === 'fulfilled' && turnResult.value.data?.iceServers) {
+          iceServers = turnResult.value.data.iceServers;
+        }
+        if (mediaResult.status === 'rejected') {
+          const err = mediaResult.reason;
+          if (!alive) return;
+          setErrorMsg(
+            err?.name === 'NotAllowedError'
+              ? 'Camera/microphone permission denied. Allow access in your browser settings and try again.'
+              : 'Could not access camera or microphone. Check your device and try again.'
+          );
+          setStatus('error');
+          return;
+        }
+        stream = (mediaResult as PromiseFulfilledResult<MediaStream>).value;
       } catch (err: any) {
         if (!alive) return;
         setErrorMsg(
