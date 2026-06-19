@@ -43,6 +43,7 @@ import CommunityBlogDetail from './pages/CommunityBlogDetail';
 import CommunityBlogSubmit from './pages/CommunityBlogSubmit';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import EmployerTeam from './pages/EmployerTeam';
+import EmployerJoinCall from './pages/EmployerJoinCall';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
@@ -92,6 +93,10 @@ export const router = createBrowserRouter([
   {
     path: '/employer/onboarding-status',
     element: <ProtectedRoute role="employer"><EmployerOnboardingStatus /></ProtectedRoute>,
+  },
+  {
+    path: '/employer/join-call/:callId',
+    element: <ProtectedRoute role="employer"><EmployerJoinCall /></ProtectedRoute>,
   },
   {
     path: '/employer',
