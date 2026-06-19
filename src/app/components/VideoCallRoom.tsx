@@ -27,7 +27,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const remoteStream = useRef<MediaStream>(new MediaStream());
   const chatEndRef  = useRef<HTMLDivElement>(null);
 
-  const [status, setStatus]     = useState<'starting' | 'waiting' | 'connected' | 'error'>('starting');
+  const [status, setStatus]     = useState<'starting' | 'waiting' | 'connected' | 'reconnecting' | 'error'>('starting');
   const [errorMsg, setErrorMsg] = useState('');
   const [micOn, setMicOn]       = useState(true);
   const [camOn, setCamOn]       = useState(true);
@@ -153,9 +153,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (alive) { setStatus('connected'); setRemoteJoined(true); }
       };
 
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'failed') pc.restartIce();
-      };
+      // ICE restart is wired up after ch is created (needs to send a new offer)
 
       const ch = supabase.channel(`rf-video-${applicationId}`, {
         config: { broadcast: { self: false } },
@@ -174,6 +172,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           ch.send({ type: 'broadcast', event: 'answer', payload: answer });
+          // If this was a restart offer, we're reconnecting
+          if (alive && (payload as RTCSessionDescriptionInit).sdp?.includes('ice-pwd')) {
+            setStatus('reconnecting');
+          }
         } catch (e) { console.error('offer error', e); }
       });
 
@@ -203,6 +205,39 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (!alive) return;
         setRemoteHandRaised((payload as any).raised);
       });
+
+      // ICE restart — host creates a new offer when connection drops
+      let iceRestartTimer: ReturnType<typeof setTimeout> | null = null;
+      pc.oniceconnectionstatechange = () => {
+        const state = pc.iceConnectionState;
+        if (state === 'connected' || state === 'completed') {
+          if (iceRestartTimer) { clearTimeout(iceRestartTimer); iceRestartTimer = null; }
+          if (alive) setStatus('connected');
+        } else if (state === 'disconnected') {
+          if (alive) setStatus('reconnecting');
+          // Give it 4s to self-heal before forcing a restart
+          iceRestartTimer = setTimeout(async () => {
+            if (!alive || pc.iceConnectionState !== 'disconnected') return;
+            if (isHost) {
+              try {
+                const offer = await pc.createOffer({ iceRestart: true });
+                await pc.setLocalDescription(offer);
+                offerRef.current = offer;
+                ch.send({ type: 'broadcast', event: 'offer', payload: offer });
+              } catch {}
+            }
+          }, 4000);
+        } else if (state === 'failed') {
+          if (alive) setStatus('reconnecting');
+          if (isHost) {
+            pc.createOffer({ iceRestart: true }).then(async offer => {
+              await pc.setLocalDescription(offer);
+              offerRef.current = offer;
+              ch.send({ type: 'broadcast', event: 'offer', payload: offer });
+            }).catch(() => {});
+          }
+        }
+      };
 
       // Candidate sends 'ready' → host resends offer (fixes timing race)
       ch.on('broadcast', { event: 'ready' }, () => {
@@ -330,7 +365,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               : quality === 'poor' ? <WifiOff size={14} color="#f59e0b" /> : null
           )}
           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, fontWeight: 500, color: '#fff', background: status === 'connected' ? '#00C853' : status === 'error' ? '#dc2626' : '#f59e0b' }}>
-            {status === 'starting' ? 'Starting…' : status === 'waiting' ? `Waiting for ${isHost ? 'candidate' : 'interviewer'}…` : status === 'connected' ? 'Live' : 'Error'}
+            {status === 'starting' ? 'Starting…' : status === 'waiting' ? `Waiting for ${isHost ? 'candidate' : 'interviewer'}…` : status === 'connected' ? 'Live' : status === 'reconnecting' ? 'Reconnecting…' : 'Error'}
           </span>
           <button onClick={toggleFullscreen} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
             {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
