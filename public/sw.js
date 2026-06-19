@@ -1,4 +1,4 @@
-const CACHE = 'rf-v5';
+const CACHE = 'rf-v6';
 const SHELL = ['/', '/offline.html'];
 
 self.addEventListener('install', (e) => {
