@@ -112,7 +112,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     async function start() {
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
       } catch (err: any) {
         if (!alive) return;
         setErrorMsg(
