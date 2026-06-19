@@ -42,6 +42,7 @@ import CommunityBlogs from './pages/CommunityBlogs';
 import CommunityBlogDetail from './pages/CommunityBlogDetail';
 import CommunityBlogSubmit from './pages/CommunityBlogSubmit';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
+import EmployerTeam from './pages/EmployerTeam';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
@@ -103,6 +104,7 @@ export const router = createBrowserRouter([
         { path: 'applicants', Component: EmployerApplicants },
         { path: 'talent-search', Component: TalentSearch },
         { path: 'interviews', Component: EmployerInterviews },
+        { path: 'team', Component: EmployerTeam },
         { path: 'analytics', Component: EmployerAnalytics },
         { path: 'subscriptions', Component: EmployerSubscriptions },
         { path: 'applicants/:jobId', Component: EmployerApplicants },

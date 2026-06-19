@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '../context/useAuth';
-import { 
-  LayoutDashboard, 
-  PlusCircle, 
-  Briefcase, 
-  Users, 
-  Video, 
-  Search, 
-  Building2, 
-  BarChart2, 
+import {
+  LayoutDashboard,
+  PlusCircle,
+  Briefcase,
+  Users,
+  Users2,
+  Video,
+  Search,
+  Building2,
+  BarChart2,
   LogOut,
   Menu,
   X
@@ -67,6 +68,7 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
     { icon: Briefcase, label: 'My Listings', path: '/employer/listings' },
     { icon: Users, label: 'Applicants', path: '/employer/applicants' },
     { icon: Video, label: 'Video Interviews', path: '/employer/interviews' },
+    { icon: Users2, label: 'My Team', path: '/employer/team' },
     { icon: Search, label: 'Talent Search', path: '/employer/talent-search' },
     { icon: Building2, label: 'Company Profile', path: '/employer/profile' },
     { icon: BarChart2, label: 'Analytics', path: '/employer/analytics' },
