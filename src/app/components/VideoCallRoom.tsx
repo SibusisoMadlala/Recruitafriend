@@ -76,6 +76,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [teamMembers, setTeamMembers]   = useState<TeamMember[]>([]);
   const [teamLoaded, setTeamLoaded]     = useState(false);
   const [teamLoading, setTeamLoading]   = useState(false);
+  const [spotlightId, setSpotlightId]   = useState<string|null>(null);
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
@@ -427,9 +428,30 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
   const connectedPeers = renderPeers.filter(p => p.connected);
   const anyHandRaised  = renderPeers.filter(p => p.handRaised);
-  const useGrid        = connectedPeers.length >= 2;
   const totalTiles     = connectedPeers.length + 1;
-  const gridCols       = totalTiles <= 3 ? `repeat(${totalTiles}, 1fr)` : 'repeat(2, 1fr)';
+
+  // Sync local video stream whenever the video element remounts (layout change)
+  useEffect(() => {
+    if (localRef.current && streamRef.current) {
+      if (localRef.current.srcObject !== streamRef.current) {
+        localRef.current.srcObject = streamRef.current;
+        localRef.current.play().catch(() => {});
+      }
+    }
+  });
+
+  // All tiles: remote peers + local self tile
+  const allTiles = [
+    ...connectedPeers.map(p => ({ ...p, isLocal: false as const })),
+    { id: 'local', name: myName, stream: null as MediaStream | null, connected: true, handRaised: false, isLocal: true as const },
+  ];
+
+  // If spotlighted peer left, clear spotlight
+  const validSpotlight = spotlightId && (spotlightId === 'local' || connectedPeers.some(p => p.id === spotlightId)) ? spotlightId : null;
+
+  function handleTileClick(id: string) {
+    setSpotlightId(prev => prev === id ? null : id);
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
@@ -476,67 +498,97 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               <button onClick={onClose} style={{ padding: '8px 20px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', marginTop: 8 }}>Close</button>
             </div>
 
-          ) : useGrid ? (
-            <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: gridCols, gridAutoRows: '1fr', gap: 4, padding: 4, boxSizing: 'border-box' }}>
-              {connectedPeers.map(peer => (
-                <div key={peer.id} style={{ position: 'relative', background: '#222', borderRadius: 8, overflow: 'hidden', minHeight: 0 }}>
-                  <video ref={el => peerVideoRef(el, peer.id, peer.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  <div style={{ position: 'absolute', bottom: 8, left: 8, color: '#fff', fontSize: 12, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 6 }}>
-                    {peer.name}{peer.handRaised ? ' ✋' : ''}
-                  </div>
-                </div>
-              ))}
-              <div style={{ position: 'relative', background: '#1a1a1a', borderRadius: 8, overflow: 'hidden', minHeight: 0 }}>
-                <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                <div style={{ position: 'absolute', bottom: 8, left: 8, color: '#fff', fontSize: 12, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 6 }}>
-                  {screenOn ? '🖥 Sharing' : `${myName} (You)`}
-                </div>
-                {!micOn && <div style={{ position: 'absolute', top: 8, right: 8, background: '#dc2626', borderRadius: '50%', padding: 4 }}><MicOff size={12} color="#fff" /></div>}
+          ) : connectedPeers.length === 0 ? (
+            // Waiting screen
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#fff' }}>
+              <div style={{ width: 48, height: 48, border: '4px solid #00C853', borderTopColor: 'transparent', borderRadius: '50%', animation: 'rfSpin 1s linear infinite' }} />
+              <p style={{ margin: 0, fontSize: 15 }}>
+                {status === 'reconnecting' ? 'Reconnecting…' : `Waiting for ${isHost ? 'others to join' : 'the interviewer'}…`}
+              </p>
+              <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
+              {/* Local PIP while waiting */}
+              <div style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222' }}>
+                <video ref={localRef} autoPlay muted playsInline style={{ width: 120, height: 160, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                <div style={{ position: 'absolute', bottom: 4, left: 6, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 4 }}>{myName} (You)</div>
               </div>
             </div>
 
-          ) : (
-            <>
-              {connectedPeers.length === 1 && (
-                <>
-                  <video ref={el => peerVideoRef(el, connectedPeers[0].id, connectedPeers[0].stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  <div style={{ position: 'absolute', bottom: 90, left: 16, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 12, padding: '3px 10px', borderRadius: 6 }}>
-                    {connectedPeers[0].name}
+          ) : validSpotlight ? (() => {
+            // Spotlight mode: spotlighted tile fills the area, others in a strip at bottom
+            const spotTile = allTiles.find(t => t.id === validSpotlight)!;
+            const otherTiles = allTiles.filter(t => t.id !== validSpotlight);
+            return (
+              <>
+                {/* Spotlighted tile */}
+                <div style={{ position: 'absolute', inset: 0, bottom: otherTiles.length > 0 ? 100 : 0, background: '#111', cursor: 'pointer' }} onClick={() => setSpotlightId(null)}>
+                  {spotTile.isLocal ? (
+                    <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                  ) : (
+                    <video ref={el => peerVideoRef(el, spotTile.id, spotTile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  )}
+                  <div style={{ position: 'absolute', bottom: 12, left: 12, color: '#fff', fontSize: 14, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8 }}>
+                    {spotTile.name}{spotTile.isLocal ? ' (You)' : ''}{spotTile.handRaised ? ' ✋' : ''}
                   </div>
-                </>
-              )}
-
-              {connectedPeers.length === 0 && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#fff' }}>
-                  <div style={{ width: 48, height: 48, border: '4px solid #00C853', borderTopColor: 'transparent', borderRadius: '50%', animation: 'rfSpin 1s linear infinite' }} />
-                  <p style={{ margin: 0, fontSize: 15 }}>
-                    {status === 'reconnecting' ? 'Reconnecting…' : `Waiting for ${isHost ? 'others to join' : 'the interviewer'}…`}
-                  </p>
-                  <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
+                  <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 11, padding: '4px 10px', borderRadius: 20 }}>Tap to exit</div>
                 </div>
-              )}
-
-              {anyHandRaised.length > 0 && (
-                <div style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', background: '#f59e0b', color: '#fff', padding: '6px 14px', borderRadius: 20, fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
-                  ✋ {anyHandRaised.map(p => p.name).join(', ')} raised their hand
+                {/* Thumbnail strip */}
+                {otherTiles.length > 0 && (
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100, display: 'flex', gap: 4, padding: '4px 4px', overflowX: 'auto', background: 'rgba(0,0,0,0.7)' }}>
+                    {otherTiles.map(t => (
+                      <div key={t.id} onClick={() => handleTileClick(t.id)} style={{ position: 'relative', flexShrink: 0, width: 72, height: 92, borderRadius: 8, overflow: 'hidden', background: '#222', cursor: 'pointer', border: '2px solid rgba(255,255,255,0.2)' }}>
+                        {t.isLocal ? (
+                          <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                        ) : (
+                          <video ref={el => peerVideoRef(el, t.id, t.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        )}
+                        <div style={{ position: 'absolute', bottom: 2, left: 4, color: '#fff', fontSize: 9, background: 'rgba(0,0,0,0.6)', padding: '1px 4px', borderRadius: 4, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: 60, textOverflow: 'ellipsis' }}>{t.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })() : totalTiles === 2 ? (
+            // 2 people: fullscreen remote + corner PIP for self
+            <>
+              <div style={{ position: 'absolute', inset: 0, cursor: 'pointer' }} onClick={() => handleTileClick(connectedPeers[0].id)}>
+                <video ref={el => peerVideoRef(el, connectedPeers[0].id, connectedPeers[0].stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                <div style={{ position: 'absolute', bottom: 90, left: 16, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 8 }}>
+                  {connectedPeers[0].name}{connectedPeers[0].handRaised ? ' ✋' : ''}
                 </div>
-              )}
-
-              {handRaised && (
-                <div style={{ position: 'absolute', top: 16, right: 16, background: '#f59e0b', color: '#fff', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
-                  ✋ Your hand is raised
-                </div>
-              )}
-
-              {/* Local PIP */}
-              <div style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222' }}>
-                <video ref={localRef} autoPlay muted playsInline style={{ width: 140, height: 105, objectFit: 'cover', display: 'block' }} />
-                <div style={{ position: 'absolute', bottom: 4, left: 6, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 4 }}>
-                  {screenOn ? '🖥 Sharing' : `${myName} (You)`}
-                </div>
-                {!micOn && <div style={{ position: 'absolute', top: 4, right: 4, background: '#dc2626', borderRadius: '50%', padding: 3 }}><MicOff size={10} color="#fff" /></div>}
+              </div>
+              {/* Self PIP */}
+              <div onClick={() => handleTileClick('local')} style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222', cursor: 'pointer' }}>
+                <video ref={localRef} autoPlay muted playsInline style={{ width: 100, height: 140, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                <div style={{ position: 'absolute', bottom: 4, left: 6, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 4 }}>{screenOn ? '🖥' : 'You'}</div>
               </div>
             </>
+          ) : (
+            // 3-4 people: 2-column block grid, WhatsApp style
+            <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gridAutoRows: '1fr', gap: 3, padding: 3, boxSizing: 'border-box' }}>
+              {allTiles.map((tile, i) => (
+                <div
+                  key={tile.id}
+                  onClick={() => handleTileClick(tile.id)}
+                  style={{
+                    position: 'relative', background: '#222', borderRadius: 10, overflow: 'hidden', minHeight: 0, cursor: 'pointer',
+                    // Last tile in odd count: span both columns to center it
+                    gridColumn: allTiles.length % 2 !== 0 && i === allTiles.length - 1 ? '1 / -1' : undefined,
+                  }}
+                >
+                  {tile.isLocal ? (
+                    <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                  ) : (
+                    <video ref={el => peerVideoRef(el, tile.id, tile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  )}
+                  <div style={{ position: 'absolute', bottom: 8, left: 8, color: '#fff', fontSize: 12, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 6 }}>
+                    {tile.name}{tile.isLocal ? ' (You)' : ''}{tile.handRaised ? ' ✋' : ''}
+                  </div>
+                  {tile.isLocal && !micOn && <div style={{ position: 'absolute', top: 8, right: 8, background: '#dc2626', borderRadius: '50%', padding: 4 }}><MicOff size={12} color="#fff" /></div>}
+                  <div style={{ position: 'absolute', top: 8, left: 8, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '2px 6px', borderRadius: 4 }}>⤢ tap</div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
