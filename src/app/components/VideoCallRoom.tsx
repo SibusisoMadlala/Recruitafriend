@@ -48,7 +48,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const heardFrom     = useRef(new Set<string>());
   const hasConnected  = useRef(false);
   const chatEndRef    = useRef<HTMLDivElement>(null);
-  const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }]);
+  const iceServersRef = useRef<RTCIceServer[]>([
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:openrelay.metered.ca:80' },
+    { urls: 'turn:openrelay.metered.ca:80',                username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
 
@@ -145,7 +151,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     const myId = myPeerId.current;
 
     async function start() {
-      let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+      let iceServers: RTCIceServer[] = iceServersRef.current;
       let stream: MediaStream;
 
       const [turnRes, mediaRes] = await Promise.allSettled([
