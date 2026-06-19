@@ -44,6 +44,7 @@ import CommunityBlogSubmit from './pages/CommunityBlogSubmit';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import EmployerTeam from './pages/EmployerTeam';
 import EmployerJoinCall from './pages/EmployerJoinCall';
+import GuestJoinCall from './pages/GuestJoinCall';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
@@ -97,6 +98,10 @@ export const router = createBrowserRouter([
   {
     path: '/employer/join-call/:callId',
     element: <ProtectedRoute role="employer"><EmployerJoinCall /></ProtectedRoute>,
+  },
+  {
+    path: '/join/:callId',
+    Component: GuestJoinCall,
   },
   {
     path: '/employer',

@@ -27,14 +27,15 @@ interface Props {
   candidateName?: string;
   jobTitle?: string;
   isHost?: boolean;
+  guestName?: string;
   onClose: () => void;
 }
 
 const MAX_PEERS = 3;
 
-export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, onClose }: Props) {
+export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, guestName, onClose }: Props) {
   const { profile, user } = useAuth();
-  const myName = profile?.name || (isHost ? 'Interviewer' : (candidateName || 'Candidate'));
+  const myName = guestName || profile?.name || (isHost ? 'Interviewer' : (candidateName || 'Candidate'));
 
   const localRef      = useRef<HTMLVideoElement>(null);
   const streamRef     = useRef<MediaStream | null>(null);
@@ -70,7 +71,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [teamLoaded, setTeamLoaded]     = useState(false);
   const [teamLoading, setTeamLoading]   = useState(false);
 
-  const meetingLink = `${window.location.origin}/employer/join-call/${applicationId}`;
+  const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
   // ─── Timer ───────────────────────────────────────────────────────────────
   useEffect(() => {
