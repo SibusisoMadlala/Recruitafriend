@@ -54,6 +54,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const myName = isHost ? 'Interviewer' : (candidateName || 'Candidate');
   const remoteName = isHost ? (candidateName || 'Candidate') : 'Interviewer';
 
+  // Ensure remote video plays once connected (mobile autoplay needs explicit call)
+  useEffect(() => {
+    if (status === 'connected' && remoteRef.current?.srcObject) {
+      remoteRef.current.play().catch(() => {});
+    }
+  }, [status]);
+
   // Timer
   useEffect(() => {
     if (status !== 'connected') return;
@@ -125,7 +132,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
       pc.ontrack = (e) => {
-        if (remoteRef.current) remoteRef.current.srcObject = e.streams[0];
+        if (remoteRef.current) {
+          remoteRef.current.srcObject = e.streams[0];
+          remoteRef.current.play().catch(() => {});
+        }
         if (alive) { setStatus('connected'); setRemoteJoined(true); }
       };
 
@@ -333,8 +343,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             </div>
           ) : (
             <>
-              {/* Remote video */}
-              <video ref={remoteRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: status === 'connected' ? 'block' : 'none' }} />
+              {/* Remote video — always mounted so autoplay works when srcObject is set */}
+              <video ref={remoteRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: status === 'connected' ? 1 : 0 }} />
 
               {/* Remote name tag */}
               {status === 'connected' && (
