@@ -24,8 +24,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const screenRef   = useRef<MediaStream | null>(null);
   const offerRef    = useRef<RTCSessionDescriptionInit | null>(null);
   const pendingIce  = useRef<RTCIceCandidateInit[]>([]);
-  const remoteStream = useRef<MediaStream>(new MediaStream());
-  const chatEndRef  = useRef<HTMLDivElement>(null);
+  const remoteStream  = useRef<MediaStream>(new MediaStream());
+  const hasConnected  = useRef(false);
+  const chatEndRef    = useRef<HTMLDivElement>(null);
 
   const [status, setStatus]     = useState<'starting' | 'waiting' | 'connected' | 'reconnecting' | 'error'>('starting');
   const [errorMsg, setErrorMsg] = useState('');
@@ -150,7 +151,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           remoteRef.current.srcObject = remoteStream.current;
           remoteRef.current.play().catch(() => {});
         }
-        if (alive) { setStatus('connected'); setRemoteJoined(true); }
+        if (alive) { hasConnected.current = true; setStatus('connected'); setRemoteJoined(true); }
       };
 
       // ICE restart is wired up after ch is created (needs to send a new offer)
@@ -249,6 +250,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       ch.subscribe(async (s) => {
         if (s !== 'SUBSCRIBED' || !alive) return;
         await ch.track({ role: isHost ? 'host' : 'seeker' });
+
+        if (hasConnected.current) {
+          // Channel reconnected after a drop — don't reset to 'waiting', just re-signal
+          if (alive) setStatus('reconnecting');
+          if (isHost) {
+            try {
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              offerRef.current = offer;
+              ch.send({ type: 'broadcast', event: 'offer', payload: offer });
+            } catch {}
+          } else {
+            ch.send({ type: 'broadcast', event: 'ready', payload: {} });
+          }
+          return;
+        }
+
+        // First connection
         if (alive) setStatus('waiting');
         if (isHost) {
           try {
@@ -414,7 +433,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               {status !== 'connected' && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#fff' }}>
                   <div style={{ width: 48, height: 48, border: '4px solid #00C853', borderTopColor: 'transparent', borderRadius: '50%', animation: 'rfSpin 1s linear infinite' }} />
-                  <p style={{ margin: 0, fontSize: 15 }}>Waiting for {isHost ? 'candidate' : 'interviewer'} to join…</p>
+                  <p style={{ margin: 0, fontSize: 15 }}>
+                    {status === 'reconnecting'
+                      ? 'Reconnecting…'
+                      : `Waiting for ${isHost ? 'candidate' : 'interviewer'} to join…`}
+                  </p>
                   <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
                 </div>
               )}
