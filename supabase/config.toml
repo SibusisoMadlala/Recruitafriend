@@ -10,6 +10,9 @@ double_confirm_changes = true
 [auth.sms]
 enable_confirmations = false
 
+[functions.get-turn]
+verify_jwt = false
+
 [functions.make-server-bca21fd3]
 # This function serves both public and protected routes.
 # Route-level auth is enforced inside the function itself, so disabling

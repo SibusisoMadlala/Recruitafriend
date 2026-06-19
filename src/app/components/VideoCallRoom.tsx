@@ -213,26 +213,34 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         try {
           const offer = await info.pc.createOffer();
           await info.pc.setLocalDescription(offer);
-          ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer, peerName: myNameRef.current } });
+          ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer, peerName: myNameRef.current, iceServers: iceServersRef.current } });
         } catch {}
       }
 
       ch.on('broadcast', { event: 'rfhello' }, async ({ payload }) => {
         if (!alive) return;
-        const { peerId, peerName } = payload as { peerId: string; peerName: string };
+        const { peerId, peerName, iceServers: peerIce } = payload as { peerId: string; peerName: string; iceServers?: RTCIceServer[] };
         if (peerId === myId) return;
+        // If peer has TURN and we only have STUN, adopt their ICE servers
+        if (peerIce && peerIce.length > 1 && iceServersRef.current.length <= 1) {
+          iceServersRef.current = peerIce;
+        }
         if (!heardFrom.current.has(peerId)) {
           heardFrom.current.add(peerId);
-          ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current } });
+          ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
         }
         if (myId > peerId) await offerTo(peerId, peerName);
       });
 
       ch.on('broadcast', { event: 'rfoffer' }, async ({ payload }) => {
         if (!alive) return;
-        const { from, to, sdp, peerName } = payload as { from: string; to: string; sdp: RTCSessionDescriptionInit; peerName?: string };
+        const { from, to, sdp, peerName, iceServers: peerIce } = payload as { from: string; to: string; sdp: RTCSessionDescriptionInit; peerName?: string; iceServers?: RTCIceServer[] };
         if (to !== myId) return;
         if (peersRef.current.size >= MAX_PEERS && !peersRef.current.has(from)) { toast.error('Call is full.'); return; }
+        // Adopt TURN from offerer if we only have STUN
+        if (peerIce && peerIce.length > 1 && iceServersRef.current.length <= 1) {
+          iceServersRef.current = peerIce;
+        }
         const info = initPeer(from, peerName || 'Participant');
         try {
           await info.pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -304,7 +312,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (s !== 'SUBSCRIBED' || !alive) return;
         await ch.track({ peerId: myId, name: myNameRef.current });
         if (alive) setStatus('waiting');
-        ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current } });
+        ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
       });
     }
 
