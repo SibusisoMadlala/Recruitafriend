@@ -132,6 +132,9 @@ Deno.serve(async (req) => {
 
     await sendPush(sub, JSON.stringify({ title, body, url: url || '/seeker/interviews', tag: tag || 'interview' }));
 
+    // Store in notifications inbox (best-effort)
+    await db.from('notifications').insert({ user_id: seeker_id, title, body, url: url || '/seeker/interviews', tag: tag || 'interview' }).catch(() => {});
+
     return new Response(JSON.stringify({ sent: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('send-push error', err);
