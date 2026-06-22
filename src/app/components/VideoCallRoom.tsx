@@ -50,10 +50,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const chatEndRef    = useRef<HTMLDivElement>(null);
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:openrelay.metered.ca:80' },
-    { urls: 'turn:openrelay.metered.ca:80',                username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
   ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
@@ -136,6 +134,19 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       .eq('owner_id', user.id)
       .then(({ data }) => { setTeamMembers(data ?? []); setTeamLoading(false); });
   }, [panel, isHost, teamLoaded, user]);
+
+  // ─── Re-announce while waiting/reconnecting (handles missed initial rfhello) ─
+  useEffect(() => {
+    if (status !== 'waiting' && status !== 'reconnecting') return;
+    const t = setInterval(() => {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'rfhello',
+        payload: { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
+      });
+    }, 5000);
+    return () => clearInterval(t);
+  }, [status]);
 
   // ─── Hand re-broadcast so late joiners see it ────────────────────────────
   useEffect(() => {

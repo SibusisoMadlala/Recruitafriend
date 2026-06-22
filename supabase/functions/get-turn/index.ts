@@ -9,15 +9,20 @@ Deno.serve((req) => {
   const username   = Deno.env.get('METERED_TURN_USERNAME')   || '';
   const credential = Deno.env.get('METERED_TURN_CREDENTIAL') || '';
 
-  const iceServers = [
+  const stun = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:global.relay.metered.ca:80' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+
+  const turn = username && credential ? [
     { urls: 'turn:global.relay.metered.ca:80',                  username, credential },
     { urls: 'turn:global.relay.metered.ca:80?transport=tcp',    username, credential },
     { urls: 'turn:global.relay.metered.ca:443',                 username, credential },
     { urls: 'turn:global.relay.metered.ca:443?transport=tcp',   username, credential },
     { urls: 'turns:global.relay.metered.ca:443',                username, credential },
-  ];
+  ] : [];
+
+  const iceServers = [...stun, ...turn];
 
   return new Response(JSON.stringify({ iceServers }), {
     headers: { ...cors, 'Content-Type': 'application/json' },
