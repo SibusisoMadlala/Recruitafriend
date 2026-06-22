@@ -117,9 +117,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     for (const peer of renderPeers) {
       if (!peer.stream) continue;
       const el = peerVideoRefs.current.get(peer.id);
-      if (el && el.srcObject !== peer.stream) {
-        el.srcObject = peer.stream;
-        el.play().catch((e: any) => {
+      if (el) {
+        el.srcObject = peer.stream; // always force — same ref may have gained a video track
+        if (el.paused) el.play().catch((e: any) => {
           if (e?.name === 'NotAllowedError') setAudioBlocked(true);
         });
       }
@@ -236,11 +236,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
         pc.ontrack = (e) => {
-          remoteStream.addTrack(e.track);
+          // Prefer the negotiated stream (already has all tracks); fall back to manual assembly
+          const stream = e.streams?.[0] ?? remoteStream;
+          if (!e.streams?.[0]) remoteStream.addTrack(e.track);
           const el = peerVideoRefs.current.get(peerId);
-          if (el) { el.srcObject = remoteStream; el.play().catch(() => {}); }
+          if (el) {
+            el.srcObject = stream;
+            el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+          }
           setConnStatus('');
-          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: remoteStream } : p));
+          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream } : p));
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
@@ -484,7 +489,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   function peerVideoRef(el: HTMLVideoElement | null, peerId: string, stream: MediaStream | null) {
     if (el) {
       peerVideoRefs.current.set(peerId, el);
-      if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+      // Always force srcObject — mobile browsers won't auto-update when tracks are added later
+      if (stream) { el.srcObject = stream; el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); }); }
     } else {
       peerVideoRefs.current.delete(peerId);
     }
