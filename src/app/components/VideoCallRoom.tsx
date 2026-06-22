@@ -263,16 +263,23 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.oniceconnectionstatechange = () => {
           const s = pc.iceConnectionState;
           setConnStatus(`ICE: ${s}`);
-          // Never reconnect during initial negotiation — only after video was flowing
+          // Never clean up during initial negotiation — only after video was flowing
           if (!wasConnected) return;
-          if (s === 'disconnected') {
-            setTimeout(() => {
-              if (!alive || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
-              triggerReconnect(peerId);
-            }, 6000);
-          } else if (s === 'failed') {
-            triggerReconnect(peerId);
+          function localCleanup() {
+            if (!alive) return;
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
+            // Only clean up if this is still the active PC for the peer
+            if (peersRef.current.get(peerId)?.pc !== pc) return;
+            pc.close();
+            peersRef.current.delete(peerId);
+            offeredTo.current.delete(peerId);
+            heardFrom.current.delete(peerId);
+            setRenderPeers(prev => prev.filter(p => p.id !== peerId));
+            // Removing peer from renderPeers triggers setStatus('reconnecting') via effect,
+            // which activates the rfhello retry loop — peer will see our rfhello and re-offer
           }
+          if (s === 'failed') localCleanup();
+          else if (s === 'disconnected') setTimeout(localCleanup, 6000);
         };
         const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: [] };
         peersRef.current.set(peerId, info);
@@ -292,41 +299,27 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         } catch {}
       }
 
-      // Tear down the PC for a peer and ask the other side to also reset,
-      // then re-announce so both sides rebuild from scratch.
-      function triggerReconnect(peerId: string) {
-        if (!alive) return;
-        const info = peersRef.current.get(peerId);
-        if (info) { info.pc.close(); peersRef.current.delete(peerId); }
-        offeredTo.current.delete(peerId);
-        heardFrom.current.delete(peerId);
-        setRenderPeers(prev => prev.filter(p => p.id !== peerId));
-        ch.send({ type: 'broadcast', event: 'rfreconnect', payload: { from: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
-      }
-
-      // Other side's connection failed — they told us to reset and re-offer
-      ch.on('broadcast', { event: 'rfreconnect' }, async ({ payload }) => {
-        if (!alive) return;
-        const { from, peerName, iceServers: peerIce } = payload as { from: string; peerName: string; iceServers?: RTCIceServer[] };
-        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
-          iceServersRef.current = peerIce;
-        }
-        const info = peersRef.current.get(from);
-        if (info) { info.pc.close(); peersRef.current.delete(from); }
-        offeredTo.current.delete(from);
-        heardFrom.current.delete(from);
-        setRenderPeers(prev => prev.filter(p => p.id !== from));
-        // Respond with rfhello so both sides re-enter the normal offer flow
-        ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
-      });
-
       ch.on('broadcast', { event: 'rfhello' }, async ({ payload }) => {
         if (!alive) return;
         const { peerId, peerName, iceServers: peerIce } = payload as { peerId: string; peerName: string; iceServers?: RTCIceServer[] };
         if (peerId === myId) return;
-        // Adopt peer's ICE servers if they have TURN and we don't
         if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
           iceServersRef.current = peerIce;
+        }
+        // If we have a broken connection to this peer, tear it down so we re-offer fresh.
+        // This handles the case where the other side cleaned up locally and re-announced.
+        const existingInfo = peersRef.current.get(peerId);
+        const connBroken = existingInfo && (
+          existingInfo.pc.iceConnectionState === 'failed' ||
+          existingInfo.pc.connectionState === 'failed' ||
+          existingInfo.pc.connectionState === 'closed'
+        );
+        if (connBroken) {
+          existingInfo!.pc.close();
+          peersRef.current.delete(peerId);
+          offeredTo.current.delete(peerId);
+          heardFrom.current.delete(peerId);
+          setRenderPeers(prev => prev.filter(p => p.id !== peerId));
         }
         if (!heardFrom.current.has(peerId)) {
           heardFrom.current.add(peerId);
@@ -433,23 +426,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
     start();
 
-    // When device switches networks (WiFi → mobile data), check all peer connections
-    // and trigger full reconnect for any that broke during the switch.
+    // When device switches networks (WiFi → mobile data), re-announce so peers
+    // whose connections to us broke can detect it via rfhello and re-offer.
     const handleOnline = () => {
       if (!alive) return;
-      peersRef.current.forEach((info, peerId) => {
-        const s = info.pc.iceConnectionState;
-        if (s === 'failed' || s === 'disconnected' || s === 'closed') {
-          info.pc.close();
-          peersRef.current.delete(peerId);
-          offeredTo.current.delete(peerId);
-          heardFrom.current.delete(peerId);
-          setRenderPeers(prev => prev.filter(p => p.id !== peerId));
-          channelRef.current?.send({
-            type: 'broadcast', event: 'rfreconnect',
-            payload: { from: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
-          });
-        }
+      channelRef.current?.send({
+        type: 'broadcast', event: 'rfhello',
+        payload: { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
       });
     };
     window.addEventListener('online', handleOnline);
