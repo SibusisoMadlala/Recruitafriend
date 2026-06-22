@@ -216,7 +216,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const existing = peersRef.current.get(peerId);
         if (existing) return existing;
         const remoteStream = new MediaStream();
-        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: 'relay' });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
         pc.ontrack = (e) => {
           remoteStream.addTrack(e.track);
