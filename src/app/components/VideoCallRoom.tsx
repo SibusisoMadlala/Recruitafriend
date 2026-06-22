@@ -55,6 +55,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
+  const panelRef      = useRef(panel);
+  panelRef.current    = panel;
 
   const [status, setStatus]             = useState<'starting'|'waiting'|'connected'|'reconnecting'|'error'>('starting');
   const [errorMsg, setErrorMsg]         = useState('');
@@ -216,7 +218,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const existing = peersRef.current.get(peerId);
         if (existing) return existing;
         const remoteStream = new MediaStream();
-        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: 'relay' });
+        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
         pc.ontrack = (e) => {
           remoteStream.addTrack(e.track);
@@ -335,7 +337,15 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
       ch.on('broadcast', { event: 'rfchat' }, ({ payload }) => {
         if (!alive) return;
-        setMessages(m => [...m, payload as ChatMsg]);
+        const msg = payload as ChatMsg;
+        setMessages(m => [...m, msg]);
+        if (panelRef.current !== 'chat') {
+          const preview = msg.text.length > 60 ? msg.text.slice(0, 60) + '…' : msg.text;
+          toast(`💬 ${msg.from}: ${preview}`, {
+            action: { label: 'Open', onClick: () => setPanel('chat') },
+            duration: 4000,
+          });
+        }
       });
 
       ch.on('broadcast', { event: 'rfhand' }, ({ payload }) => {
