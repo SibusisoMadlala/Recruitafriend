@@ -75,6 +75,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [teamLoaded, setTeamLoaded]     = useState(false);
   const [teamLoading, setTeamLoading]   = useState(false);
   const [spotlightId, setSpotlightId]   = useState<string|null>(null);
+  const [audioBlocked, setAudioBlocked] = useState(false);
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
@@ -113,8 +114,25 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     for (const peer of renderPeers) {
       if (!peer.stream) continue;
       const el = peerVideoRefs.current.get(peer.id);
-      if (el && el.srcObject !== peer.stream) { el.srcObject = peer.stream; el.play().catch(() => {}); }
+      if (el && el.srcObject !== peer.stream) {
+        el.srcObject = peer.stream;
+        el.play().catch((e: any) => {
+          if (e?.name === 'NotAllowedError') setAudioBlocked(true);
+        });
+      }
     }
+  }, [renderPeers]);
+
+  // ─── Detect blocked autoplay when new peers connect (mobile browsers) ────
+  useEffect(() => {
+    if (!renderPeers.some(p => p.connected)) return;
+    peerVideoRefs.current.forEach(el => {
+      if (el.paused) {
+        el.play().catch((e: any) => {
+          if (e?.name === 'NotAllowedError') setAudioBlocked(true);
+        });
+      }
+    });
   }, [renderPeers]);
 
   // ─── Derive call status from peer list ───────────────────────────────────
@@ -462,6 +480,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
   function handleTileClick(id: string) {
     setSpotlightId(prev => prev === id ? null : id);
+    // Unlock audio on any user tap (fixes mobile autoplay block)
+    if (audioBlocked) {
+      peerVideoRefs.current.forEach(el => { el.play().catch(() => {}); });
+      setAudioBlocked(false);
+    }
+  }
+
+  function unlockAudio() {
+    peerVideoRefs.current.forEach(el => { el.play().catch(() => {}); });
+    setAudioBlocked(false);
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -599,6 +627,21 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   <div style={{ position: 'absolute', top: 8, left: 8, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '2px 6px', borderRadius: 4 }}>⤢ tap</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Tap-to-enable-audio banner (mobile autoplay block) ── */}
+          {audioBlocked && (
+            <div
+              onClick={unlockAudio}
+              style={{
+                position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(0,200,83,0.95)', color: '#fff', padding: '12px 24px',
+                borderRadius: 24, cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                zIndex: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+              }}
+            >
+              🔊 Tap to enable audio
             </div>
           )}
         </div>
