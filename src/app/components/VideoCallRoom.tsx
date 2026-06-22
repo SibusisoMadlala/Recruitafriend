@@ -48,10 +48,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const heardFrom     = useRef(new Set<string>());
   const hasConnected  = useRef(false);
   const chatEndRef    = useRef<HTMLDivElement>(null);
+  // Hardcoded public TURN fallback — VPN users need relay, and get-turn may not have credentials configured
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80',                username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
   ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
@@ -236,16 +240,19 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
         pc.ontrack = (e) => {
-          // Prefer the negotiated stream (already has all tracks); fall back to manual assembly
-          const stream = e.streams?.[0] ?? remoteStream;
-          if (!e.streams?.[0]) remoteStream.addTrack(e.track);
+          // Add track to our accumulator stream, then create a fresh MediaStream snapshot.
+          // A new object reference on every ontrack call forces el.srcObject reassignment
+          // on mobile (Android/iOS), where assigning the same MediaStream reference again
+          // after a new track is added does NOT trigger video to appear.
+          remoteStream.addTrack(e.track);
+          const snap = new MediaStream(remoteStream.getTracks());
           const el = peerVideoRefs.current.get(peerId);
           if (el) {
-            el.srcObject = stream;
+            el.srcObject = snap;
             el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
           }
           setConnStatus('');
-          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream } : p));
+          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: snap } : p));
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
