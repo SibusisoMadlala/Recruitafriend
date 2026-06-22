@@ -39,7 +39,15 @@ export default function VideoInterviews() {
     setLoading(true);
     try {
       const { applications: rows } = await apiCall('/applications/my', { requireAuth: true });
-      setApplications((rows || []) as Application[]);
+      const apps = (rows || []) as Application[];
+      setApplications(apps);
+      // Auto-rejoin if page was refreshed mid-call
+      const savedId = sessionStorage.getItem('rf_seeker_call');
+      if (savedId) {
+        const saved = apps.find(a => a.id === savedId);
+        if (saved) setActiveCall(saved);
+        else sessionStorage.removeItem('rf_seeker_call');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to load interviews');
     } finally {
@@ -119,7 +127,7 @@ export default function VideoInterviews() {
           applicationId={activeCall.id}
           jobTitle={(activeCall as any).job?.title || (activeCall as any).job_title}
           candidateName="You"
-          onClose={() => setActiveCall(null)}
+          onClose={() => { sessionStorage.removeItem('rf_seeker_call'); setActiveCall(null); }}
         />
       )}
 
@@ -233,7 +241,7 @@ export default function VideoInterviews() {
                             )}
                           </div>
                           <button
-                            onClick={() => setActiveCall(app)}
+                            onClick={() => { sessionStorage.setItem('rf_seeker_call', app.id); setActiveCall(app); }}
                             className="flex items-center gap-2 px-5 py-2.5 bg-[var(--rf-green)] hover:bg-[#00B548] text-white text-sm font-semibold rounded-lg transition-colors"
                           >
                             <Video className="w-4 h-4" />

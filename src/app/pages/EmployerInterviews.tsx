@@ -59,7 +59,15 @@ export default function EmployerInterviews() {
     setLoading(true);
     try {
       const { applications: allApps } = await apiCall('/employer/applications', { requireAuth: true });
-      setApplications((allApps || []) as EmployerApplication[]);
+      const apps = (allApps || []) as EmployerApplication[];
+      setApplications(apps);
+      // Auto-rejoin if page was refreshed mid-call
+      const savedId = sessionStorage.getItem('rf_employer_call');
+      if (savedId) {
+        const saved = apps.find(a => a.id === savedId);
+        if (saved) setActiveCall(saved);
+        else sessionStorage.removeItem('rf_employer_call');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to load data');
     } finally {
@@ -110,7 +118,10 @@ export default function EmployerInterviews() {
       toast.success(immediate ? 'Interview started! Share your screen with the candidate.' : 'Interview request sent to candidate.');
       setSchedulingApp(null);
       setScheduledAt('');
-      if (immediate) setActiveCall({ ...app, status: 'interview', notes });
+      if (immediate) {
+        sessionStorage.setItem('rf_employer_call', app.id);
+        setActiveCall({ ...app, status: 'interview', notes });
+      }
 
       // Fire push notification to candidate (best-effort, don't block UI)
       if (app.seeker_id) {
@@ -146,6 +157,7 @@ export default function EmployerInterviews() {
         a.id === app.id ? { ...a, notes: application.notes } : a
       ));
       toast.success('Interview marked as completed');
+      sessionStorage.removeItem('rf_employer_call');
       setActiveCall(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to update');
@@ -164,7 +176,7 @@ export default function EmployerInterviews() {
           candidateName={candidateLabel(activeCall)}
           jobTitle={activeCall.job_title}
           isHost={true}
-          onClose={() => setActiveCall(null)}
+          onClose={() => { sessionStorage.removeItem('rf_employer_call'); setActiveCall(null); }}
         />
       )}
 
@@ -279,7 +291,7 @@ export default function EmployerInterviews() {
                     <div className="flex gap-2">
                       <Button
                         className="bg-[#00C853] hover:bg-[#00B548] text-white"
-                        onClick={() => setActiveCall(app)}
+                        onClick={() => { sessionStorage.setItem('rf_employer_call', app.id); setActiveCall(app); }}
                       >
                         <Video className="w-4 h-4 mr-1.5" />
                         Start Video Call
@@ -322,7 +334,7 @@ export default function EmployerInterviews() {
                       size="sm"
                       variant="outline"
                       className="border-blue-500 text-blue-600 hover:bg-blue-50"
-                      onClick={() => setActiveCall(app)}
+                      onClick={() => { sessionStorage.setItem('rf_employer_call', app.id); setActiveCall(app); }}
                     >
                       <Zap className="w-4 h-4 mr-1.5" />
                       Start Anyway
