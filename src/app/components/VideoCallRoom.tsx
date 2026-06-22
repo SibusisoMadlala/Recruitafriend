@@ -260,15 +260,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.oniceconnectionstatechange = () => {
           const s = pc.iceConnectionState;
           setConnStatus(`ICE: ${s}`);
-          if ((s === 'failed' || s === 'disconnected') && offeredTo.current.has(peerId)) {
-            const delay = s === 'disconnected' ? 5000 : 0;
+          if (s === 'disconnected') {
+            // Give 6 s for natural recovery (e.g. brief network blip) before triggering reconnect
             setTimeout(() => {
+              if (!alive) return;
               if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
-              pc.createOffer({ iceRestart: true }).then(async offer => {
-                await pc.setLocalDescription(offer);
-                ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer } });
-              }).catch(() => {});
-            }, delay);
+              // Still not recovered — initiate full reconnect
+              triggerReconnect(peerId);
+            }, 6000);
+          } else if (s === 'failed') {
+            triggerReconnect(peerId);
           }
         };
         const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: [] };
@@ -288,6 +289,34 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer, peerName: myNameRef.current, iceServers: iceServersRef.current } });
         } catch {}
       }
+
+      // Tear down the PC for a peer and ask the other side to also reset,
+      // then re-announce so both sides rebuild from scratch.
+      function triggerReconnect(peerId: string) {
+        if (!alive) return;
+        const info = peersRef.current.get(peerId);
+        if (info) { info.pc.close(); peersRef.current.delete(peerId); }
+        offeredTo.current.delete(peerId);
+        heardFrom.current.delete(peerId);
+        setRenderPeers(prev => prev.filter(p => p.id !== peerId));
+        ch.send({ type: 'broadcast', event: 'rfreconnect', payload: { from: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
+      }
+
+      // Other side's connection failed — they told us to reset and re-offer
+      ch.on('broadcast', { event: 'rfreconnect' }, async ({ payload }) => {
+        if (!alive) return;
+        const { from, peerName, iceServers: peerIce } = payload as { from: string; peerName: string; iceServers?: RTCIceServer[] };
+        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
+          iceServersRef.current = peerIce;
+        }
+        const info = peersRef.current.get(from);
+        if (info) { info.pc.close(); peersRef.current.delete(from); }
+        offeredTo.current.delete(from);
+        heardFrom.current.delete(from);
+        setRenderPeers(prev => prev.filter(p => p.id !== from));
+        // Respond with rfhello so both sides re-enter the normal offer flow
+        ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
+      });
 
       ch.on('broadcast', { event: 'rfhello' }, async ({ payload }) => {
         if (!alive) return;
@@ -397,11 +426,35 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (alive) setStatus('waiting');
         ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
       });
+
     }
 
     start();
+
+    // When device switches networks (WiFi → mobile data), check all peer connections
+    // and trigger full reconnect for any that broke during the switch.
+    const handleOnline = () => {
+      if (!alive) return;
+      peersRef.current.forEach((info, peerId) => {
+        const s = info.pc.iceConnectionState;
+        if (s === 'failed' || s === 'disconnected' || s === 'closed') {
+          info.pc.close();
+          peersRef.current.delete(peerId);
+          offeredTo.current.delete(peerId);
+          heardFrom.current.delete(peerId);
+          setRenderPeers(prev => prev.filter(p => p.id !== peerId));
+          channelRef.current?.send({
+            type: 'broadcast', event: 'rfreconnect',
+            payload: { from: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
+          });
+        }
+      });
+    };
+    window.addEventListener('online', handleOnline);
+
     return () => {
       alive = false;
+      window.removeEventListener('online', handleOnline);
       channelRef.current?.send({ type: 'broadcast', event: 'rfleave', payload: { peerId: myPeerId.current } });
       streamRef.current?.getTracks().forEach(t => t.stop());
       screenRef.current?.getTracks().forEach(t => t.stop());
