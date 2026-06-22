@@ -377,9 +377,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         setRenderPeers(prev => prev.map(p => p.id === from ? { ...p, handRaised: raised } : p));
       });
 
-      ch.subscribe(async (s) => {
+      ch.subscribe((s) => {
         if (s !== 'SUBSCRIBED' || !alive) return;
-        await ch.track({ peerId: myId, name: myNameRef.current });
+        // Presence is best-effort — guests (unauthenticated) may not have permission.
+        // Never await it; always continue to send rfhello regardless.
+        ch.track({ peerId: myId, name: myNameRef.current }).catch(() => {});
         if (alive) setStatus('waiting');
         ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
       });
