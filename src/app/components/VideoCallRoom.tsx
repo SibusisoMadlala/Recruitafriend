@@ -78,6 +78,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [teamLoading, setTeamLoading]   = useState(false);
   const [spotlightId, setSpotlightId]   = useState<string|null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [connStatus, setConnStatus]     = useState('');
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
@@ -182,19 +183,33 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     let alive = true;
     const myId = myPeerId.current;
 
+    function hasTurn(servers: RTCIceServer[]) {
+      return servers.some(s =>
+        (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => typeof u === 'string' && /^turns?:/.test(u))
+      );
+    }
+
     async function start() {
       let iceServers: RTCIceServer[] = iceServersRef.current;
       let stream: MediaStream;
 
-      const [turnRes, mediaRes] = await Promise.allSettled([
+      // Cap get-turn at 4 s so a slow edge function doesn't delay the whole call
+      const turnWithTimeout = Promise.race([
         supabase.functions.invoke('get-turn'),
+        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 4000)),
+      ]);
+
+      const [turnRes, mediaRes] = await Promise.allSettled([
+        turnWithTimeout,
         navigator.mediaDevices.getUserMedia({
           video: true,
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         }),
       ]);
 
-      if (turnRes.status === 'fulfilled' && turnRes.value.data?.iceServers) iceServers = turnRes.value.data.iceServers;
+      if (turnRes.status === 'fulfilled' && (turnRes.value as any)?.data?.iceServers) {
+        iceServers = (turnRes.value as any).data.iceServers;
+      }
 
       if (mediaRes.status === 'rejected') {
         if (!alive) return;
@@ -224,17 +239,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           remoteStream.addTrack(e.track);
           const el = peerVideoRefs.current.get(peerId);
           if (el) { el.srcObject = remoteStream; el.play().catch(() => {}); }
+          setConnStatus('');
           setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: remoteStream } : p));
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
         };
         pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === 'failed' && offeredTo.current.has(peerId)) {
-            pc.createOffer({ iceRestart: true }).then(async offer => {
-              await pc.setLocalDescription(offer);
-              ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer } });
-            }).catch(() => {});
+          const s = pc.iceConnectionState;
+          setConnStatus(`ICE: ${s}`);
+          if ((s === 'failed' || s === 'disconnected') && offeredTo.current.has(peerId)) {
+            const delay = s === 'disconnected' ? 5000 : 0;
+            setTimeout(() => {
+              if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
+              pc.createOffer({ iceRestart: true }).then(async offer => {
+                await pc.setLocalDescription(offer);
+                ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer } });
+              }).catch(() => {});
+            }, delay);
           }
         };
         const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: [] };
@@ -259,12 +281,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (!alive) return;
         const { peerId, peerName, iceServers: peerIce } = payload as { peerId: string; peerName: string; iceServers?: RTCIceServer[] };
         if (peerId === myId) return;
-        // If peer has TURN and we only have STUN, adopt their ICE servers
-        if (peerIce && peerIce.length > 1 && iceServersRef.current.length <= 1) {
+        // Adopt peer's ICE servers if they have TURN and we don't
+        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
           iceServersRef.current = peerIce;
         }
         if (!heardFrom.current.has(peerId)) {
           heardFrom.current.add(peerId);
+          setConnStatus(`Found ${peerName} — connecting…`);
           ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
         }
         if (myId > peerId) await offerTo(peerId, peerName);
@@ -275,8 +298,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const { from, to, sdp, peerName, iceServers: peerIce } = payload as { from: string; to: string; sdp: RTCSessionDescriptionInit; peerName?: string; iceServers?: RTCIceServer[] };
         if (to !== myId) return;
         if (peersRef.current.size >= MAX_PEERS && !peersRef.current.has(from)) { toast.error('Call is full.'); return; }
-        // Adopt TURN from offerer if we only have STUN
-        if (peerIce && peerIce.length > 1 && iceServersRef.current.length <= 1) {
+        // Adopt TURN from offerer if they have it and we don't
+        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
           iceServersRef.current = peerIce;
         }
         const info = initPeer(from, peerName || 'Participant');
@@ -554,6 +577,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               <p style={{ margin: 0, fontSize: 15 }}>
                 {status === 'reconnecting' ? 'Reconnecting…' : `Waiting for ${isHost ? 'others to join' : 'the interviewer'}…`}
               </p>
+              {connStatus && (
+                <p style={{ margin: 0, fontSize: 12, color: connStatus.startsWith('ICE: fail') || connStatus.startsWith('ICE: disc') ? '#f59e0b' : '#00C853', opacity: 0.9 }}>
+                  {connStatus}
+                </p>
+              )}
               <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
               {/* Local PIP while waiting */}
               <div style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222' }}>
