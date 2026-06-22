@@ -239,7 +239,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const remoteStream = new MediaStream();
         const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
+        // Only reconnect if video was flowing before — not during initial ICE negotiation
+        let wasConnected = false;
         pc.ontrack = (e) => {
+          wasConnected = true;
           // Add track to our accumulator stream, then create a fresh MediaStream snapshot.
           // A new object reference on every ontrack call forces el.srcObject reassignment
           // on mobile (Android/iOS), where assigning the same MediaStream reference again
@@ -260,12 +263,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.oniceconnectionstatechange = () => {
           const s = pc.iceConnectionState;
           setConnStatus(`ICE: ${s}`);
+          // Never reconnect during initial negotiation — only after video was flowing
+          if (!wasConnected) return;
           if (s === 'disconnected') {
-            // Give 6 s for natural recovery (e.g. brief network blip) before triggering reconnect
             setTimeout(() => {
-              if (!alive) return;
-              if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
-              // Still not recovered — initiate full reconnect
+              if (!alive || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
               triggerReconnect(peerId);
             }, 6000);
           } else if (s === 'failed') {
