@@ -198,6 +198,21 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => typeof u === 'string' && /^turns?:/.test(u))
       );
     }
+    // Metered credentials (global.relay.metered.ca) are far more reliable than the free
+    // openrelay fallback — prefer them whenever the other peer has them.
+    function hasMeteredTurn(servers: RTCIceServer[]) {
+      return servers.some(s => {
+        const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+        return urls.some((u: unknown) => typeof u === 'string' && (u as string).includes('global.relay.metered.ca'));
+      });
+    }
+    // Adopt peer's ICE servers if they're better than ours: either we have nothing, or
+    // they have Metered credentials and we're stuck on the free openrelay fallback.
+    function shouldAdopt(peerIce: RTCIceServer[]) {
+      if (!hasTurn(peerIce)) return false;
+      if (!hasTurn(iceServersRef.current)) return true;
+      return hasMeteredTurn(peerIce) && !hasMeteredTurn(iceServersRef.current);
+    }
 
     async function start() {
       let iceServers: RTCIceServer[] = iceServersRef.current;
@@ -349,9 +364,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (!alive) return;
         const { peerId, peerName, iceServers: peerIce } = payload as { peerId: string; peerName: string; iceServers?: RTCIceServer[] };
         if (peerId === myId) return;
-        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
-          iceServersRef.current = peerIce;
-        }
+        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = peerIce;
         // If we have a broken connection to this peer, tear it down so we re-offer fresh.
         // This handles the case where the other side cleaned up locally and re-announced.
         const existingInfo = peersRef.current.get(peerId);
@@ -381,9 +394,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (to !== myId) return;
         if (peersRef.current.size >= MAX_PEERS && !peersRef.current.has(from)) { toast.error('Call is full.'); return; }
         // Adopt TURN from offerer if they have it and we don't
-        if (peerIce?.length && hasTurn(peerIce) && !hasTurn(iceServersRef.current)) {
-          iceServersRef.current = peerIce;
-        }
+        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = peerIce;
         const info = initPeer(from, peerName || 'Participant');
         try {
           await info.pc.setRemoteDescription(new RTCSessionDescription(sdp));
