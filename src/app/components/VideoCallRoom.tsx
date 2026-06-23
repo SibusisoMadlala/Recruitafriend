@@ -275,15 +275,15 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           function localCleanup() {
             if (!alive) return;
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
-            // Only clean up if this is still the active PC for this peer
             if (peersRef.current.get(peerId)?.pc !== pc) return;
+            // Tell the other side to also tear down — without this, they stay 'disconnected'
+            // with a stale PC and never re-enter the reconnecting flow.
+            ch.send({ type: 'broadcast', event: 'rfreset', payload: { from: myId, to: peerId } });
             pc.close();
             peersRef.current.delete(peerId);
             offeredTo.current.delete(peerId);
             heardFrom.current.delete(peerId);
             setRenderPeers(prev => prev.filter(p => p.id !== peerId));
-            // Removing peer from renderPeers triggers setStatus('reconnecting'/'waiting')
-            // which activates the rfhello retry loop so both sides can re-offer fresh
           }
           // Always clean up on failed — including initial attempts.
           // Leaving a failed PC in peersRef causes initPeer to reuse it, preventing recovery.
@@ -316,7 +316,21 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       }
 
       async function offerTo(peerId: string, peerName: string) {
-        if (offeredTo.current.has(peerId)) return;
+        if (offeredTo.current.has(peerId)) {
+          // Re-offer if the previous offer's PC is gone or unhealthy
+          const existing = peersRef.current.get(peerId);
+          const pcOk = existing && (
+            existing.pc.iceConnectionState === 'connected' ||
+            existing.pc.iceConnectionState === 'completed' ||
+            existing.pc.iceConnectionState === 'checking' ||
+            existing.pc.iceConnectionState === 'new'
+          );
+          if (pcOk) return;
+          if (existing) { existing.pc.close(); peersRef.current.delete(peerId); }
+          offeredTo.current.delete(peerId);
+          heardFrom.current.delete(peerId);
+          setRenderPeers(prev => prev.filter(p => p.id !== peerId));
+        }
         if (peersRef.current.size >= MAX_PEERS) { toast.error('This call is full (max 4 people).'); return; }
         offeredTo.current.add(peerId);
         const info = initPeer(peerId, peerName);
@@ -413,6 +427,20 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (info) { info.pc.close(); peersRef.current.delete(peerId); }
         offeredTo.current.delete(peerId); heardFrom.current.delete(peerId);
         setRenderPeers(prev => prev.filter(p => p.id !== peerId));
+      });
+
+      // rfreset: the other side has given up on our shared connection and torn down
+      // their PC. We do the same so both sides re-enter the reconnecting flow together,
+      // after which rfhello retries re-establish the call without anyone pressing anything.
+      ch.on('broadcast', { event: 'rfreset' }, ({ payload }) => {
+        if (!alive) return;
+        const { from, to } = payload as { from: string; to: string };
+        if (to !== myId) return;
+        const info = peersRef.current.get(from);
+        if (info) { info.pc.close(); peersRef.current.delete(from); }
+        offeredTo.current.delete(from);
+        heardFrom.current.delete(from);
+        setRenderPeers(prev => prev.filter(p => p.id !== from));
       });
 
       ch.on('presence', { event: 'leave' }, ({ leftPresences }) => {
