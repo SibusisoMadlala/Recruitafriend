@@ -120,26 +120,19 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   useEffect(() => { if (panel === 'chat') setUnread(0); }, [panel]);
 
   // ─── Sync streams to video elements ──────────────────────────────────────
-  // This effect runs only when renderPeers changes (peer joins/leaves/ontrack fires).
-  // It does NOT run every second from the duration timer, so we can safely assign
-  // srcObject and call play() without guards — no risk of per-second flickering.
   useEffect(() => {
     for (const peer of renderPeers) {
       if (!peer.stream || !peer.connected) continue;
       const el = peerVideoRefs.current.get(peer.id);
       if (!el) continue;
-      // Always assign — don't guard on !==. When srcObject changes (audio→video snapshot)
-      // the browser may not auto-resume on mobile; calling play() after is the only safe path.
       if (el.srcObject !== peer.stream) {
         el.srcObject = peer.stream;
-        // Explicitly start after srcObject change. play() on an already-playing element is
-        // a spec-defined no-op; AbortError fires if another load is in flight (harmless).
         el.play().catch((e: any) => {
-          if (e?.name === 'NotAllowedError') setAudioBlocked(true);
+          if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
         });
       } else if (el.paused) {
         el.play().catch((e: any) => {
-          if (e?.name === 'NotAllowedError') setAudioBlocked(true);
+          if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
         });
       }
     }
@@ -370,7 +363,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (!alive) return;
         const { peerId, peerName, iceServers: peerIce } = payload as { peerId: string; peerName: string; iceServers?: RTCIceServer[] };
         if (peerId === myId) return;
-        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = peerIce;
+        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = [...peerIce, ...iceServersRef.current];
         // If we have a broken connection to this peer, tear it down so we re-offer fresh.
         // This handles the case where the other side cleaned up locally and re-announced.
         const existingInfo = peersRef.current.get(peerId);
@@ -400,7 +393,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (to !== myId) return;
         if (peersRef.current.size >= MAX_PEERS && !peersRef.current.has(from)) { toast.error('Call is full.'); return; }
         // Adopt TURN from offerer if they have it and we don't
-        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = peerIce;
+        if (peerIce?.length && shouldAdopt(peerIce)) iceServersRef.current = [...peerIce, ...iceServersRef.current];
         const info = initPeer(from, peerName || 'Participant');
         try {
           await info.pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -620,11 +613,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     gap: 4, fontSize: 11, fontWeight: 500, minWidth: 56,
   });
 
-  // Only registers/unregisters the element. srcObject and play() are handled by the
-  // renderPeers useEffect above, which runs after DOM commit and never on timer ticks.
-  function peerVideoRef(el: HTMLVideoElement | null, peerId: string) {
-    if (el) peerVideoRefs.current.set(peerId, el);
-    else peerVideoRefs.current.delete(peerId);
+  function peerVideoRef(el: HTMLVideoElement | null, peerId: string, stream: MediaStream | null) {
+    if (el) {
+      peerVideoRefs.current.set(peerId, el);
+      if (stream) {
+        if (el.srcObject !== stream) {
+          el.srcObject = stream;
+          el.play().catch((e: any) => {
+            if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
+          });
+        } else if (el.paused) {
+          el.play().catch((e: any) => {
+            if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
+          });
+        }
+      }
+    } else {
+      peerVideoRefs.current.delete(peerId);
+    }
   }
 
   const connectedPeers = renderPeers.filter(p => p.connected);
@@ -740,7 +746,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   {spotTile.isLocal ? (
                     <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
-                    <video ref={el => peerVideoRef(el, spotTile.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <video ref={el => peerVideoRef(el, spotTile.id, spotTile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
                   <div style={{ position: 'absolute', bottom: 12, left: 12, color: '#fff', fontSize: 14, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8 }}>
                     {spotTile.name}{spotTile.isLocal ? ' (You)' : ''}{spotTile.handRaised ? ' ✋' : ''}
@@ -755,7 +761,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                         {t.isLocal ? (
                           <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                         ) : (
-                          <video ref={el => peerVideoRef(el, t.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          <video ref={el => peerVideoRef(el, t.id, t.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         )}
                         <div style={{ position: 'absolute', bottom: 2, left: 4, color: '#fff', fontSize: 9, background: 'rgba(0,0,0,0.6)', padding: '1px 4px', borderRadius: 4, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: 60, textOverflow: 'ellipsis' }}>{t.name}</div>
                       </div>
@@ -768,7 +774,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             // 2 people: fullscreen remote + corner PIP for self
             <>
               <div style={{ position: 'absolute', inset: 0, cursor: 'pointer' }} onClick={() => handleTileClick(connectedPeers[0].id)}>
-                <video ref={el => peerVideoRef(el, connectedPeers[0].id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                <video ref={el => peerVideoRef(el, connectedPeers[0].id, connectedPeers[0].stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 <div style={{ position: 'absolute', bottom: 90, left: 16, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 8 }}>
                   {connectedPeers[0].name}{connectedPeers[0].handRaised ? ' ✋' : ''}
                 </div>
@@ -795,7 +801,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   {tile.isLocal ? (
                     <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
-                    <video ref={el => peerVideoRef(el, tile.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <video ref={el => peerVideoRef(el, tile.id, tile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
                   <div style={{ position: 'absolute', bottom: 8, left: 8, color: '#fff', fontSize: 12, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 6 }}>
                     {tile.name}{tile.isLocal ? ' (You)' : ''}{tile.handRaised ? ' ✋' : ''}
