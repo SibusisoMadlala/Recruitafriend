@@ -268,22 +268,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         let wasConnected = false;
         pc.ontrack = (e) => {
           wasConnected = true;
-          // e.streams[0] is the live RTCMediaStream sent by the remote peer. It's the same
-          // object for every ontrack event from this peer (audio + video share one stream),
-          // so the video element's srcObject only needs to be set once — subsequent tracks
-          // added to the live stream are reflected automatically without reassigning srcObject.
-          // Fall back to a manual snapshot only if the peer didn't attach tracks to a stream.
           remoteStream.addTrack(e.track);
-          const stream = e.streams[0] ?? new MediaStream(remoteStream.getTracks());
+          // Create a new snapshot on every track event. Audio and video arrive as separate
+          // ontrack calls — the audio snapshot has no video track, the video snapshot does.
+          // Because each snapshot is a different object, the el.srcObject !== stream guard in
+          // peerVideoRef / the sync effect will always let the video snapshot through and assign
+          // it to the element, making the video appear. Using e.streams[0] (the same live
+          // object for every track) breaks this because the guard sees the same reference and
+          // skips the assignment even after the video track has been added to the stream.
+          const snap = new MediaStream(remoteStream.getTracks());
           const el = peerVideoRefs.current.get(peerId);
           if (el) {
-            if (el.srcObject !== stream) {
-              el.srcObject = stream;
-            }
-            if (el.paused) el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+            if (el.srcObject !== snap) el.srcObject = snap;
+            if (el.paused) el.play().catch((err: any) => {
+              if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') setAudioBlocked(true);
+            });
           }
           setConnStatus('');
-          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream } : p));
+          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: snap } : p));
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
