@@ -3,6 +3,7 @@ import {
   X, Video, VideoOff, Mic, MicOff, Monitor, MonitorOff,
   MessageSquare, Users, Maximize2, Minimize2, Send, PhoneOff,
   Wifi, WifiOff, Copy, Check, UserPlus, Loader2,
+  Circle, Square, FileText, Save,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
@@ -66,7 +67,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [camOn, setCamOn]               = useState(true);
   const [screenOn, setScreenOn]         = useState(false);
   const [handRaised, setHandRaised]     = useState(false);
-  const [panel, setPanel]               = useState<'none'|'chat'|'people'>('none');
+  const [panel, setPanel]               = useState<'none'|'chat'|'people'|'notes'>('none');
   const panelRef = useRef(panel);
   panelRef.current = panel;
   const [fullscreen, setFullscreen]     = useState(false);
@@ -82,6 +83,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [spotlightId, setSpotlightId]   = useState<string|null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [connStatus, setConnStatus]     = useState('');
+  const [recording, setRecording]       = useState(false);
+  const mediaRecRef                     = useRef<MediaRecorder | null>(null);
+  const audioCtxRef                     = useRef<AudioContext | null>(null);
+  const [notes, setNotes]               = useState('');
+  const [notesSaved, setNotesSaved]     = useState(false);
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
@@ -153,6 +159,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       .eq('owner_id', user.id)
       .then(({ data }) => { setTeamMembers(data ?? []); setTeamLoading(false); });
   }, [panel, isHost, teamLoaded, user]);
+
+  // ─── Notes: load from localStorage on mount, auto-save on change ────────────
+  useEffect(() => {
+    const saved = localStorage.getItem(`rf-notes-${applicationId}`);
+    if (saved) setNotes(saved);
+  }, [applicationId]);
+  useEffect(() => {
+    localStorage.setItem(`rf-notes-${applicationId}`, notes);
+    setNotesSaved(false);
+  }, [notes, applicationId]);
 
   // ─── Re-announce while waiting/reconnecting (handles missed initial rfhello) ─
   useEffect(() => {
@@ -578,6 +594,71 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     }
   }, []);
 
+  function startRecording() {
+    const remotePeer = Array.from(peersRef.current.values())[0];
+    if (!remotePeer) { toast.error('No one else is in the call yet.'); return; }
+    try {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const dest = ctx.createMediaStreamDestination();
+      streamRef.current?.getAudioTracks().forEach(t =>
+        ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)
+      );
+      remotePeer.stream.getAudioTracks().forEach(t =>
+        ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)
+      );
+      const videoTrack = remotePeer.stream.getVideoTracks()[0];
+      const combined = new MediaStream([
+        ...(videoTrack ? [videoTrack] : []),
+        ...dest.stream.getTracks(),
+      ]);
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '';
+      const rec = new MediaRecorder(combined, mimeType ? { mimeType } : undefined);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `interview-${applicationId}-${Date.now()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        ctx.close();
+        audioCtxRef.current = null;
+      };
+      rec.start();
+      mediaRecRef.current = rec;
+      setRecording(true);
+      toast.success('Recording started');
+    } catch (err: any) {
+      toast.error('Could not start recording: ' + (err?.message ?? err));
+    }
+  }
+
+  function stopRecording() {
+    mediaRecRef.current?.stop();
+    mediaRecRef.current = null;
+    setRecording(false);
+    toast.success('Recording saved — check your downloads');
+  }
+
+  async function saveNotes() {
+    localStorage.setItem(`rf-notes-${applicationId}`, notes);
+    try {
+      await supabase.from('interview_notes').upsert(
+        { application_id: applicationId, content: notes, updated_at: new Date().toISOString() },
+        { onConflict: 'application_id' }
+      );
+    } catch {}
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2500);
+  }
+
   function copyInvite(label: string, key: string) {
     navigator.clipboard.writeText(meetingLink).then(() => {
       setCopiedFor(key);
@@ -815,7 +896,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         {panel !== 'none' && (
           <div style={{ width: 280, background: '#1a1f2e', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <span style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{panel === 'chat' ? 'Chat' : 'Participants'}</span>
+              <span style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{panel === 'chat' ? 'Chat' : panel === 'notes' ? 'Meeting Notes' : 'Participants'}</span>
               <button onClick={() => setPanel('none')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
 
@@ -905,6 +986,32 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               </div>
             )}
 
+            {/* Notes panel (host only) */}
+            {panel === 'notes' && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 12, gap: 10 }}>
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: 11 }}>
+                  Notes are auto-saved locally and can be saved to your account.
+                </p>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Type your interview notes here…"
+                  style={{
+                    flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13, resize: 'none',
+                    outline: 'none', fontFamily: 'inherit', lineHeight: 1.5,
+                  }}
+                />
+                <button
+                  onClick={saveNotes}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: notesSaved ? 'rgba(0,200,83,0.2)' : '#00C853', border: notesSaved ? '1px solid #00C853' : 'none', color: '#fff', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+                >
+                  {notesSaved ? <Check size={15} /> : <Save size={15} />}
+                  {notesSaved ? 'Saved!' : 'Save Notes'}
+                </button>
+              </div>
+            )}
+
             {/* Chat panel */}
             {panel === 'chat' && (
               <>
@@ -980,6 +1087,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               </span>
             )}
           </button>
+          {isHost && (
+            <button onClick={() => setPanel(p => p === 'notes' ? 'none' : 'notes')} style={Btn(panel === 'notes')}>
+              <FileText size={18} />
+              Notes
+            </button>
+          )}
+          {isHost && (
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              style={{ ...Btn(true), background: recording ? '#dc2626' : 'rgba(255,255,255,0.15)', position: 'relative' }}
+            >
+              {recording ? <Square size={18} fill="#fff" /> : <Circle size={18} color="#dc2626" fill="#dc2626" />}
+              {recording ? 'Stop Rec' : 'Record'}
+              {recording && (
+                <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: '#fff', animation: 'rfSpin 1s linear infinite' }} />
+              )}
+            </button>
+          )}
           <div style={{ width: 1, height: 40, background: 'rgba(255,255,255,0.15)', margin: '0 2px' }} />
           <button onClick={onClose} style={{ ...Btn(true, true), background: '#dc2626', minWidth: 60 }}>
             <PhoneOff size={18} />
