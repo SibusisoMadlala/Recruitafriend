@@ -120,33 +120,29 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   useEffect(() => { if (panel === 'chat') setUnread(0); }, [panel]);
 
   // ─── Sync streams to video elements ──────────────────────────────────────
+  // This effect runs only when renderPeers changes (peer joins/leaves/ontrack fires).
+  // It does NOT run every second from the duration timer, so we can safely assign
+  // srcObject and call play() without guards — no risk of per-second flickering.
   useEffect(() => {
     for (const peer of renderPeers) {
-      if (!peer.stream) continue;
+      if (!peer.stream || !peer.connected) continue;
       const el = peerVideoRefs.current.get(peer.id);
-      if (el) {
-        // Only reassign srcObject when the stream reference actually changed —
-        // reassigning the same object causes a visible blink in some browsers.
-        if (el.srcObject !== peer.stream) {
-          el.srcObject = peer.stream;
-        }
-        if (el.paused) el.play().catch((e: any) => {
+      if (!el) continue;
+      // Always assign — don't guard on !==. When srcObject changes (audio→video snapshot)
+      // the browser may not auto-resume on mobile; calling play() after is the only safe path.
+      if (el.srcObject !== peer.stream) {
+        el.srcObject = peer.stream;
+        // Explicitly start after srcObject change. play() on an already-playing element is
+        // a spec-defined no-op; AbortError fires if another load is in flight (harmless).
+        el.play().catch((e: any) => {
           if (e?.name === 'NotAllowedError') setAudioBlocked(true);
         });
-      }
-    }
-  }, [renderPeers]);
-
-  // ─── Detect blocked autoplay when new peers connect (mobile browsers) ────
-  useEffect(() => {
-    if (!renderPeers.some(p => p.connected)) return;
-    peerVideoRefs.current.forEach(el => {
-      if (el.paused) {
+      } else if (el.paused) {
         el.play().catch((e: any) => {
           if (e?.name === 'NotAllowedError') setAudioBlocked(true);
         });
       }
-    });
+    }
   }, [renderPeers]);
 
   // ─── Derive call status from peer list ───────────────────────────────────
@@ -624,21 +620,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     gap: 4, fontSize: 11, fontWeight: 500, minWidth: 56,
   });
 
-  function peerVideoRef(el: HTMLVideoElement | null, peerId: string, stream: MediaStream | null) {
-    if (el) {
-      peerVideoRefs.current.set(peerId, el);
-      if (stream) {
-        // Only reassign srcObject when the stream changed — prevents the thrash where React
-        // calls this inline callback ref with null+el on every re-render (setDuration fires
-        // every second), which would otherwise call el.srcObject= and el.play() every second.
-        if (el.srcObject !== stream) el.srcObject = stream;
-        // Only call play() when the element is actually paused (first mount, autoplay blocked,
-        // or srcObject just changed). A playing video must not be interrupted.
-        if (el.paused) el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
-      }
-    } else {
-      peerVideoRefs.current.delete(peerId);
-    }
+  // Only registers/unregisters the element. srcObject and play() are handled by the
+  // renderPeers useEffect above, which runs after DOM commit and never on timer ticks.
+  function peerVideoRef(el: HTMLVideoElement | null, peerId: string) {
+    if (el) peerVideoRefs.current.set(peerId, el);
+    else peerVideoRefs.current.delete(peerId);
   }
 
   const connectedPeers = renderPeers.filter(p => p.connected);
@@ -754,7 +740,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   {spotTile.isLocal ? (
                     <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
-                    <video ref={el => peerVideoRef(el, spotTile.id, spotTile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <video ref={el => peerVideoRef(el, spotTile.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
                   <div style={{ position: 'absolute', bottom: 12, left: 12, color: '#fff', fontSize: 14, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: 8 }}>
                     {spotTile.name}{spotTile.isLocal ? ' (You)' : ''}{spotTile.handRaised ? ' ✋' : ''}
@@ -769,7 +755,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                         {t.isLocal ? (
                           <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                         ) : (
-                          <video ref={el => peerVideoRef(el, t.id, t.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          <video ref={el => peerVideoRef(el, t.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         )}
                         <div style={{ position: 'absolute', bottom: 2, left: 4, color: '#fff', fontSize: 9, background: 'rgba(0,0,0,0.6)', padding: '1px 4px', borderRadius: 4, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: 60, textOverflow: 'ellipsis' }}>{t.name}</div>
                       </div>
@@ -782,7 +768,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             // 2 people: fullscreen remote + corner PIP for self
             <>
               <div style={{ position: 'absolute', inset: 0, cursor: 'pointer' }} onClick={() => handleTileClick(connectedPeers[0].id)}>
-                <video ref={el => peerVideoRef(el, connectedPeers[0].id, connectedPeers[0].stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                <video ref={el => peerVideoRef(el, connectedPeers[0].id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 <div style={{ position: 'absolute', bottom: 90, left: 16, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 8 }}>
                   {connectedPeers[0].name}{connectedPeers[0].handRaised ? ' ✋' : ''}
                 </div>
@@ -809,7 +795,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   {tile.isLocal ? (
                     <video ref={localRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
-                    <video ref={el => peerVideoRef(el, tile.id, tile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <video ref={el => peerVideoRef(el, tile.id)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
                   <div style={{ position: 'absolute', bottom: 8, left: 8, color: '#fff', fontSize: 12, fontWeight: 600, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 6 }}>
                     {tile.name}{tile.isLocal ? ' (You)' : ''}{tile.handRaised ? ' ✋' : ''}
