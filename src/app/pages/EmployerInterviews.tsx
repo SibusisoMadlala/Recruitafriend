@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar as CalendarIcon, Clock, Video, CheckCircle2, Loader2, Users, Zap } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Video, CheckCircle2, Loader2, Users, Zap, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -52,6 +52,7 @@ export default function EmployerInterviews() {
   const [schedulingApp, setSchedulingApp] = useState<EmployerApplication | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
   const [activeCall, setActiveCall] = useState<EmployerApplication | null>(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => { loadInterviews(); }, []);
 
@@ -73,6 +74,16 @@ export default function EmployerInterviews() {
     } finally {
       setLoading(false);
     }
+  }
+
+  const q = search.toLowerCase().trim();
+  function matchesSearch(a: EmployerApplication) {
+    if (!q) return true;
+    return (
+      (a.seeker?.name || '').toLowerCase().includes(q) ||
+      (a.seeker?.email || '').toLowerCase().includes(q) ||
+      (a.job_title || '').toLowerCase().includes(q)
+    );
   }
 
   // Upcoming: interview status, confirmed, not completed
@@ -192,6 +203,17 @@ export default function EmployerInterviews() {
           </Button>
         </div>
 
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input
+            placeholder="Search by candidate name, email or job title…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
@@ -214,22 +236,22 @@ export default function EmployerInterviews() {
 
         <Tabs defaultValue="schedule">
           <TabsList className="flex-wrap h-auto">
-            <TabsTrigger value="schedule">Schedule ({schedulable.length})</TabsTrigger>
-            <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
-            <TabsTrigger value="awaiting">Awaiting Reply ({awaitingReply.length})</TabsTrigger>
-            <TabsTrigger value="completed">Completed ({completed.length})</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule ({schedulable.filter(matchesSearch).length})</TabsTrigger>
+            <TabsTrigger value="upcoming">Upcoming ({upcoming.filter(matchesSearch).length})</TabsTrigger>
+            <TabsTrigger value="awaiting">Awaiting Reply ({awaitingReply.filter(matchesSearch).length})</TabsTrigger>
+            <TabsTrigger value="completed">Completed ({completed.filter(matchesSearch).length})</TabsTrigger>
           </TabsList>
 
           {/* Schedule tab — all applicants */}
           <TabsContent value="schedule" className="space-y-3 mt-4">
             {loading ? (
               <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>
-            ) : schedulable.length === 0 ? (
+            ) : schedulable.filter(matchesSearch).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Users className="w-10 h-10 mx-auto mb-3" />
-                <p>No applicants yet. Post a job to start receiving applications.</p>
+                <p>{q ? 'No applicants match your search.' : 'No applicants yet. Post a job to start receiving applications.'}</p>
               </div>
-            ) : schedulable.map(app => (
+            ) : schedulable.filter(matchesSearch).map(app => (
               <Card key={app.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
@@ -268,13 +290,13 @@ export default function EmployerInterviews() {
 
           {/* Upcoming tab */}
           <TabsContent value="upcoming" className="space-y-3 mt-4">
-            {upcoming.length === 0 ? (
+            {upcoming.filter(matchesSearch).length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
                 <CalendarIcon className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="font-semibold text-[#0A2540]">No Upcoming Interviews</p>
-                <p className="text-sm text-gray-500 mt-1">Schedule one from the Schedule tab.</p>
+                <p className="font-semibold text-[#0A2540]">{q ? 'No matches found.' : 'No Upcoming Interviews'}</p>
+                <p className="text-sm text-gray-500 mt-1">{q ? 'Try a different search term.' : 'Schedule one from the Schedule tab.'}</p>
               </div>
-            ) : upcoming.map(app => {
+            ) : upcoming.filter(matchesSearch).map(app => {
               const meta = parseInterviewMeta(app.notes);
               return (
                 <Card key={app.id} className="hover:shadow-md transition-shadow">
@@ -308,12 +330,12 @@ export default function EmployerInterviews() {
 
           {/* Awaiting reply tab */}
           <TabsContent value="awaiting" className="space-y-3 mt-4">
-            {awaitingReply.length === 0 ? (
+            {awaitingReply.filter(matchesSearch).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Clock className="w-10 h-10 mx-auto mb-3" />
-                <p>No pending interview requests.</p>
+                <p>{q ? 'No matches found.' : 'No pending interview requests.'}</p>
               </div>
-            ) : awaitingReply.map(app => {
+            ) : awaitingReply.filter(matchesSearch).map(app => {
               const meta = parseInterviewMeta(app.notes);
               return (
                 <Card key={app.id} className="border-amber-200">
@@ -347,12 +369,12 @@ export default function EmployerInterviews() {
 
           {/* Completed tab */}
           <TabsContent value="completed" className="space-y-3 mt-4">
-            {completed.length === 0 ? (
+            {completed.filter(matchesSearch).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <CheckCircle2 className="w-10 h-10 mx-auto mb-3" />
-                <p>No completed interviews yet.</p>
+                <p>{q ? 'No matches found.' : 'No completed interviews yet.'}</p>
               </div>
-            ) : completed.map(app => {
+            ) : completed.filter(matchesSearch).map(app => {
               const meta = parseInterviewMeta(app.notes);
               return (
                 <Card key={app.id}>
