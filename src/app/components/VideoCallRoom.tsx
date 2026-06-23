@@ -211,8 +211,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         }),
       ]);
 
-      if (turnRes.status === 'fulfilled' && (turnRes.value as any)?.data?.iceServers) {
-        iceServers = (turnRes.value as any).data.iceServers;
+      // Only adopt get-turn result if it actually contains TURN servers.
+      // If the edge function returns STUN-only (no credentials configured), keep our
+      // hardcoded openrelay TURN — never replace TURN with STUN-only.
+      if (turnRes.status === 'fulfilled') {
+        const fetched = (turnRes.value as any)?.data?.iceServers as RTCIceServer[] | undefined;
+        if (fetched && hasTurn(fetched)) iceServers = fetched;
       }
 
       if (mediaRes.status === 'rejected') {
@@ -263,23 +267,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.oniceconnectionstatechange = () => {
           const s = pc.iceConnectionState;
           setConnStatus(`ICE: ${s}`);
-          // Never clean up during initial negotiation — only after video was flowing
-          if (!wasConnected) return;
           function localCleanup() {
             if (!alive) return;
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
-            // Only clean up if this is still the active PC for the peer
+            // Only clean up if this is still the active PC for this peer
             if (peersRef.current.get(peerId)?.pc !== pc) return;
             pc.close();
             peersRef.current.delete(peerId);
             offeredTo.current.delete(peerId);
             heardFrom.current.delete(peerId);
             setRenderPeers(prev => prev.filter(p => p.id !== peerId));
-            // Removing peer from renderPeers triggers setStatus('reconnecting') via effect,
-            // which activates the rfhello retry loop — peer will see our rfhello and re-offer
+            // Removing peer from renderPeers triggers setStatus('reconnecting'/'waiting')
+            // which activates the rfhello retry loop so both sides can re-offer fresh
           }
+          // Always clean up on failed — including initial attempts.
+          // Leaving a failed PC in peersRef causes initPeer to reuse it, preventing recovery.
           if (s === 'failed') localCleanup();
-          else if (s === 'disconnected') setTimeout(localCleanup, 6000);
+          // For disconnected, only clean up if video was already flowing (brief blip otherwise)
+          else if (s === 'disconnected' && wasConnected) setTimeout(localCleanup, 6000);
         };
         const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: [] };
         peersRef.current.set(peerId, info);
