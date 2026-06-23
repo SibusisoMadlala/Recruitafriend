@@ -204,7 +204,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       // Cap get-turn at 4 s so a slow edge function doesn't delay the whole call
       const turnWithTimeout = Promise.race([
         supabase.functions.invoke('get-turn'),
-        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 4000)),
+        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 2000)),
       ]);
 
       const [turnRes, mediaRes] = await Promise.allSettled([
@@ -603,8 +603,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   function peerVideoRef(el: HTMLVideoElement | null, peerId: string, stream: MediaStream | null) {
     if (el) {
       peerVideoRefs.current.set(peerId, el);
-      // Always force srcObject — mobile browsers won't auto-update when tracks are added later
-      if (stream) { el.srcObject = stream; el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); }); }
+      // Guard against re-render thrash: this is an inline callback ref, so React calls it
+      // with null then with the element on EVERY re-render (setDuration fires every second).
+      // Without the !== check, el.srcObject and el.play() would fire every second → flickering.
+      if (stream && el.srcObject !== stream) {
+        el.srcObject = stream;
+        el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+      }
     } else {
       peerVideoRefs.current.delete(peerId);
     }
