@@ -49,14 +49,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const hasConnected  = useRef(false);
   const earlyIceRef   = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const chatEndRef    = useRef<HTMLDivElement>(null);
-  // Hardcoded public TURN fallback — VPN users need relay, and get-turn may not have credentials configured
   const iceServersRef = useRef<RTCIceServer[]>([
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80',                username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:standard.relay.metered.ca:80',                    username: 'b10f323ae4c187a5b438d9e8', credential: '43IcD0tWmTuKZrWR' },
+    { urls: 'turn:standard.relay.metered.ca:80?transport=tcp',      username: 'b10f323ae4c187a5b438d9e8', credential: '43IcD0tWmTuKZrWR' },
+    { urls: 'turn:standard.relay.metered.ca:443',                   username: 'b10f323ae4c187a5b438d9e8', credential: '43IcD0tWmTuKZrWR' },
+    { urls: 'turns:standard.relay.metered.ca:443?transport=tcp',    username: 'b10f323ae4c187a5b438d9e8', credential: '43IcD0tWmTuKZrWR' },
   ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
@@ -188,16 +186,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => typeof u === 'string' && /^turns?:/.test(u))
       );
     }
-    // Metered credentials (global.relay.metered.ca) are far more reliable than the free
-    // openrelay fallback — prefer them whenever the other peer has them.
     function hasMeteredTurn(servers: RTCIceServer[]) {
       return servers.some(s => {
         const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
-        return urls.some((u: unknown) => typeof u === 'string' && (u as string).includes('global.relay.metered.ca'));
+        return urls.some((u: unknown) => typeof u === 'string' && (u as string).includes('relay.metered.ca'));
       });
     }
-    // Adopt peer's ICE servers if they're better than ours: either we have nothing, or
-    // they have Metered credentials and we're stuck on the free openrelay fallback.
+    // Adopt peer's ICE servers if they have Metered TURN and we don't.
     function shouldAdopt(peerIce: RTCIceServer[]) {
       if (!hasTurn(peerIce)) return false;
       if (!hasTurn(iceServersRef.current)) return true;
@@ -222,9 +217,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         }),
       ]);
 
-      // Only adopt get-turn result if it actually contains TURN servers.
-      // If the edge function returns STUN-only (no credentials configured), keep our
-      // hardcoded openrelay TURN — never replace TURN with STUN-only.
+      // Only adopt get-turn result if it actually contains TURN servers — never replace TURN with STUN-only.
       if (turnRes.status === 'fulfilled') {
         const fetched = (turnRes.value as any)?.data?.iceServers as RTCIceServer[] | undefined;
         if (fetched && hasTurn(fetched)) iceServers = fetched;
@@ -252,7 +245,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const existing = peersRef.current.get(peerId);
         if (existing) return existing;
         const remoteStream = new MediaStream();
-        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+        const pc = new RTCPeerConnection({
+          iceServers: iceServersRef.current,
+          iceTransportPolicy: 'relay',
+        });
         streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
         // Only reconnect if video was flowing before — not during initial ICE negotiation
         let wasConnected = false;
@@ -276,9 +272,25 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
         };
+        pc.onconnectionstatechange = () => {
+          console.log(`[WebRTC] connectionState=${pc.connectionState} peer=${peerId.slice(0,8)}`);
+        };
         pc.oniceconnectionstatechange = () => {
           const s = pc.iceConnectionState;
+          console.log(`[WebRTC] iceConnectionState=${s} peer=${peerId.slice(0,8)}`);
           setConnStatus(`ICE: ${s}`);
+          if (s === 'connected' || s === 'completed') {
+            pc.getStats().then(stats => {
+              stats.forEach(r => {
+                if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated) {
+                  const local = stats.get(r.localCandidateId) as any;
+                  const remote = stats.get(r.remoteCandidateId) as any;
+                  const isRelay = local?.candidateType === 'relay';
+                  console.log(`[WebRTC] selected pair — local:${local?.candidateType}(${local?.protocol}) remote:${remote?.candidateType} relay=${isRelay}`);
+                }
+              });
+            }).catch(() => {});
+          }
           function localCleanup() {
             if (!alive) return;
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
