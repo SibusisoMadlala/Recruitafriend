@@ -64,6 +64,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [status, setStatus]             = useState<'starting'|'waiting'|'connected'|'reconnecting'|'error'>('starting');
   const [errorMsg, setErrorMsg]         = useState('');
   const [renderPeers, setRenderPeers]   = useState<RenderPeer[]>([]);
+  const [dbg, setDbg]                   = useState<string[]>([]);
   const [micOn, setMicOn]               = useState(true);
   const [camOn, setCamOn]               = useState(true);
   const [screenOn, setScreenOn]         = useState(false);
@@ -258,26 +259,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.ontrack = (e) => {
           wasConnected = true;
           remoteStream.addTrack(e.track);
-          // Create a new snapshot on every track event. Audio and video arrive as separate
-          // ontrack calls — the audio snapshot has no video track, the video snapshot does.
-          // Because each snapshot is a different object, the el.srcObject !== stream guard in
-          // peerVideoRef / the sync effect will always let the video snapshot through and assign
-          // it to the element, making the video appear. Using e.streams[0] (the same live
-          // object for every track) breaks this because the guard sees the same reference and
-          // skips the assignment even after the video track has been added to the stream.
           const snap = new MediaStream(remoteStream.getTracks());
           const el = peerVideoRefs.current.get(peerId);
+          const elInfo = el ? `el:paused=${el.paused} srcNull=${el.srcObject===null}` : 'el:null';
+          setDbg(prev => [...prev.slice(-8), `track:${e.track.kind} ${elInfo} snapV=${snap.getVideoTracks().length} snapA=${snap.getAudioTracks().length}`]);
           if (el) {
-            // Always assign srcObject — even if it's the same object reference, mobile browsers
-            // may not auto-display a new track added to a stream already set on the element.
             el.srcObject = snap;
-            // Always call play() here — do NOT gate on el.paused. When srcObject switches from
-            // an audio-only snapshot to a video snapshot, el.paused can read false (element was
-            // playing audio) before the browser processes the stream change, so the paused check
-            // would skip play() and leave the video stuck on a black frame. play() on an already-
-            // playing element is a no-op per spec; the only risk is AbortError when called while
-            // another play() is still pending, which we catch below.
             el.play().catch((err: any) => {
+              setDbg(prev => [...prev.slice(-8), `play-err:${err?.name}`]);
               if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') setAudioBlocked(true);
             });
           }
@@ -618,11 +607,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       peerVideoRefs.current.set(peerId, el);
       if (stream) {
         if (el.srcObject !== stream) {
+          setDbg(prev => [...prev.slice(-8), `ref:assign V=${stream.getVideoTracks().length} A=${stream.getAudioTracks().length} paused=${el.paused}`]);
           el.srcObject = stream;
           el.play().catch((e: any) => {
+            setDbg(prev => [...prev.slice(-8), `ref:play-err ${e?.name}`]);
             if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
           });
         } else if (el.paused) {
+          setDbg(prev => [...prev.slice(-8), `ref:resume`]);
           el.play().catch((e: any) => {
             if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
           });
@@ -810,6 +802,13 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   <div style={{ position: 'absolute', top: 8, left: 8, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '2px 6px', borderRadius: 4 }}>⤢ tap</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Debug overlay ── */}
+          {dbg.length > 0 && (
+            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.85)', color: '#0f0', fontSize: 10, padding: '4px 6px', borderRadius: 4, zIndex: 50, whiteSpace: 'pre', lineHeight: 1.5, pointerEvents: 'none' }}>
+              {dbg.join('\n')}
             </div>
           )}
 
