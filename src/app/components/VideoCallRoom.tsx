@@ -200,28 +200,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     }
 
     async function start() {
-      let iceServers: RTCIceServer[] = iceServersRef.current;
+      const iceServers = iceServersRef.current;
       let stream: MediaStream;
 
-      // Cap get-turn at 5 s — mobile data can be slow to reach the edge function
-      const turnWithTimeout = Promise.race([
-        supabase.functions.invoke('get-turn'),
-        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 5000)),
-      ]);
-
-      const [turnRes, mediaRes] = await Promise.allSettled([
-        turnWithTimeout,
-        navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        }),
-      ]);
-
-      // Only adopt get-turn result if it actually contains TURN servers — never replace TURN with STUN-only.
-      if (turnRes.status === 'fulfilled') {
-        const fetched = (turnRes.value as any)?.data?.iceServers as RTCIceServer[] | undefined;
-        if (fetched && hasTurn(fetched)) iceServers = fetched;
-      }
+      const mediaRes = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }).then(s => ({ status: 'fulfilled' as const, value: s }))
+        .catch(e => ({ status: 'rejected' as const, reason: e }));
 
       if (mediaRes.status === 'rejected') {
         if (!alive) return;
@@ -231,11 +217,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           : 'Could not access camera or microphone. Check your device.');
         setStatus('error'); return;
       }
-      stream = (mediaRes as PromiseFulfilledResult<MediaStream>).value;
+      stream = mediaRes.value;
       if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
 
       streamRef.current = stream;
-      iceServersRef.current = iceServers;
       if (localRef.current) { localRef.current.srcObject = stream; localRef.current.play().catch(() => {}); }
 
       const ch = supabase.channel(`rf-video-${applicationId}`, { config: { broadcast: { self: false } } });
