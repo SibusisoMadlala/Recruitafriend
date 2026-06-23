@@ -168,12 +168,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   // ─── Re-announce while waiting/reconnecting (handles missed initial rfhello) ─
   useEffect(() => {
     if (status !== 'waiting' && status !== 'reconnecting') return;
+    const payload = { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current };
+    // Fire immediately on entering this state — don't wait 5 s for the first retry
+    channelRef.current?.send({ type: 'broadcast', event: 'rfhello', payload });
     const t = setInterval(() => {
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'rfhello',
-        payload: { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
-      });
+      channelRef.current?.send({ type: 'broadcast', event: 'rfhello', payload });
     }, 5000);
     return () => clearInterval(t);
   }, [status]);
@@ -253,15 +252,17 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         pc.ontrack = (e) => {
           wasConnected = true;
           remoteStream.addTrack(e.track);
-          // Only create a new snapshot and reassign srcObject when a video track arrives.
-          // Audio tracks don't affect what the video element renders, so updating srcObject
-          // for audio-only ontrack events just causes an unnecessary blink.
-          if (e.track.kind !== 'video') return;
           const snap = new MediaStream(remoteStream.getTracks());
-          const el = peerVideoRefs.current.get(peerId);
-          if (el) {
-            el.srcObject = snap;
-            el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+          // Assign srcObject only when a video track arrives — assigning for audio-only
+          // snapshots causes a black flash before the video track joins. But always call
+          // setRenderPeers so the peer's video element is created (needed so the element
+          // exists in the DOM when the video track arrives moments later).
+          if (e.track.kind === 'video') {
+            const el = peerVideoRefs.current.get(peerId);
+            if (el) {
+              el.srcObject = snap;
+              el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+            }
           }
           setConnStatus('');
           setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: snap } : p));
