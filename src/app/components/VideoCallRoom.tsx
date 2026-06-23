@@ -47,6 +47,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const offeredTo     = useRef(new Set<string>());
   const heardFrom     = useRef(new Set<string>());
   const hasConnected  = useRef(false);
+  const earlyIceRef   = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const chatEndRef    = useRef<HTMLDivElement>(null);
   // Hardcoded public TURN fallback — VPN users need relay, and get-turn may not have credentials configured
   const iceServersRef = useRef<RTCIceServer[]>([
@@ -283,10 +284,28 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           // Always clean up on failed — including initial attempts.
           // Leaving a failed PC in peersRef causes initPeer to reuse it, preventing recovery.
           if (s === 'failed') localCleanup();
-          // For disconnected, only clean up if video was already flowing (brief blip otherwise)
-          else if (s === 'disconnected' && wasConnected) setTimeout(localCleanup, 6000);
+          else if (s === 'disconnected' && wasConnected) {
+            setTimeout(async () => {
+              if (!alive || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
+              if (peersRef.current.get(peerId)?.pc !== pc) return;
+              // Offerer attempts ICE restart before full teardown
+              if (offeredTo.current.has(peerId)) {
+                try {
+                  const offer = await pc.createOffer({ iceRestart: true });
+                  await pc.setLocalDescription(offer);
+                  ch.send({ type: 'broadcast', event: 'rfoffer', payload: { from: myId, to: peerId, sdp: offer, peerName: myNameRef.current, iceServers: iceServersRef.current } });
+                  // Give restart 8 s to succeed before falling through to full cleanup
+                  setTimeout(localCleanup, 8000);
+                  return;
+                } catch {}
+              }
+              localCleanup();
+            }, 3000);
+          }
         };
-        const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: [] };
+        const earlyIce = earlyIceRef.current.get(peerId) ?? [];
+        earlyIceRef.current.delete(peerId);
+        const info: PeerInfo = { id: peerId, name: peerName, pc, stream: remoteStream, pendingIce: earlyIce };
         peersRef.current.set(peerId, info);
         setRenderPeers(prev => [...prev.filter(p => p.id !== peerId), { id: peerId, name: peerName, stream: null, connected: false, handRaised: false }]);
         return info;
@@ -316,8 +335,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const existingInfo = peersRef.current.get(peerId);
         const connBroken = existingInfo && (
           existingInfo.pc.iceConnectionState === 'failed' ||
+          existingInfo.pc.iceConnectionState === 'disconnected' ||
           existingInfo.pc.connectionState === 'failed' ||
-          existingInfo.pc.connectionState === 'closed'
+          existingInfo.pc.connectionState === 'closed' ||
+          existingInfo.pc.connectionState === 'disconnected'
         );
         if (connBroken) {
           existingInfo!.pc.close();
@@ -373,7 +394,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const { from, to, candidate } = payload as { from: string; to: string; candidate: RTCIceCandidateInit };
         if (to !== myId) return;
         const info = peersRef.current.get(from);
-        if (!info) return;
+        if (!info) {
+          // Peer not initialised yet — buffer until initPeer is called
+          if (!earlyIceRef.current.has(from)) earlyIceRef.current.set(from, []);
+          earlyIceRef.current.get(from)!.push(candidate);
+          return;
+        }
         if (info.pc.remoteDescription) { try { await info.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {} }
         else info.pendingIce.push(candidate);
       });
@@ -420,10 +446,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
       ch.subscribe((s) => {
         if (s !== 'SUBSCRIBED' || !alive) return;
-        // Presence is best-effort — guests (unauthenticated) may not have permission.
-        // Never await it; always continue to send rfhello regardless.
         ch.track({ peerId: myId, name: myNameRef.current }).catch(() => {});
-        if (alive) setStatus('waiting');
+        // Only set 'waiting' on the very first subscription — not on channel reconnects
+        if (!hasConnected.current && peersRef.current.size === 0) setStatus('waiting');
         ch.send({ type: 'broadcast', event: 'rfhello', payload: { peerId: myId, peerName: myNameRef.current, iceServers: iceServersRef.current } });
       });
 
@@ -431,14 +456,22 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
     start();
 
-    // When device switches networks (WiFi → mobile data), re-announce so peers
-    // whose connections to us broke can detect it via rfhello and re-offer.
+    // When device switches networks (WiFi → mobile data), re-announce multiple times.
+    // The Supabase channel may take a few seconds to reconnect after a network change,
+    // so we retry every 2 s for 10 s to ensure the message gets through.
     const handleOnline = () => {
       if (!alive) return;
-      channelRef.current?.send({
-        type: 'broadcast', event: 'rfhello',
-        payload: { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
-      });
+      let count = 0;
+      const announce = () => {
+        if (!alive || count >= 6) return;
+        channelRef.current?.send({
+          type: 'broadcast', event: 'rfhello',
+          payload: { peerId: myPeerId.current, peerName: myNameRef.current, iceServers: iceServersRef.current },
+        });
+        count++;
+        setTimeout(announce, 2000);
+      };
+      setTimeout(announce, 500); // small head start so channel can reconnect first
     };
     window.addEventListener('online', handleOnline);
 
