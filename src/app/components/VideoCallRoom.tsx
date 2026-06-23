@@ -279,8 +279,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           const snap = new MediaStream(remoteStream.getTracks());
           const el = peerVideoRefs.current.get(peerId);
           if (el) {
-            if (el.srcObject !== snap) el.srcObject = snap;
-            if (el.paused) el.play().catch((err: any) => {
+            // Always assign srcObject — even if it's the same object reference, mobile browsers
+            // may not auto-display a new track added to a stream already set on the element.
+            el.srcObject = snap;
+            // Always call play() here — do NOT gate on el.paused. When srcObject switches from
+            // an audio-only snapshot to a video snapshot, el.paused can read false (element was
+            // playing audio) before the browser processes the stream change, so the paused check
+            // would skip play() and leave the video stuck on a black frame. play() on an already-
+            // playing element is a no-op per spec; the only risk is AbortError when called while
+            // another play() is still pending, which we catch below.
+            el.play().catch((err: any) => {
               if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') setAudioBlocked(true);
             });
           }
