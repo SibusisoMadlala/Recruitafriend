@@ -104,7 +104,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const stats = await first.pc.getStats();
         let lost = 0, total = 0;
         stats.forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'video') { lost = r.packetsLost ?? 0; total = r.packetsReceived ?? 0; } });
-        setQuality(total > 0 && lost / (total + lost) < 0.05 ? 'good' : 'poor');
+        // Only show 'poor' once we've actually received some packets — before that it's just
+        // the stream warming up (no data yet ≠ bad quality).
+        setQuality(total === 0 ? 'unknown' : lost / (total + lost) < 0.05 ? 'good' : 'poor');
       } catch {}
     }, 5000);
     return () => clearInterval(t);
@@ -201,10 +203,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       let iceServers: RTCIceServer[] = iceServersRef.current;
       let stream: MediaStream;
 
-      // Cap get-turn at 4 s so a slow edge function doesn't delay the whole call
+      // Cap get-turn at 5 s — mobile data can be slow to reach the edge function
       const turnWithTimeout = Promise.race([
         supabase.functions.invoke('get-turn'),
-        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 2000)),
+        new Promise<{ data: null; error: null }>(res => setTimeout(() => res({ data: null, error: null }), 5000)),
       ]);
 
       const [turnRes, mediaRes] = await Promise.allSettled([
@@ -251,21 +253,22 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         let wasConnected = false;
         pc.ontrack = (e) => {
           wasConnected = true;
+          // e.streams[0] is the live RTCMediaStream sent by the remote peer. It's the same
+          // object for every ontrack event from this peer (audio + video share one stream),
+          // so the video element's srcObject only needs to be set once — subsequent tracks
+          // added to the live stream are reflected automatically without reassigning srcObject.
+          // Fall back to a manual snapshot only if the peer didn't attach tracks to a stream.
           remoteStream.addTrack(e.track);
-          const snap = new MediaStream(remoteStream.getTracks());
-          // Assign srcObject only when a video track arrives — assigning for audio-only
-          // snapshots causes a black flash before the video track joins. But always call
-          // setRenderPeers so the peer's video element is created (needed so the element
-          // exists in the DOM when the video track arrives moments later).
-          if (e.track.kind === 'video') {
-            const el = peerVideoRefs.current.get(peerId);
-            if (el) {
-              el.srcObject = snap;
-              el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
+          const stream = e.streams[0] ?? new MediaStream(remoteStream.getTracks());
+          const el = peerVideoRefs.current.get(peerId);
+          if (el) {
+            if (el.srcObject !== stream) {
+              el.srcObject = stream;
             }
+            if (el.paused) el.play().catch((err: any) => { if (err?.name === 'NotAllowedError') setAudioBlocked(true); });
           }
           setConnStatus('');
-          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream: snap } : p));
+          setRenderPeers(prev => prev.map(p => p.id === peerId ? { ...p, connected: true, stream } : p));
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) ch.send({ type: 'broadcast', event: 'rfice', payload: { from: myId, to: peerId, candidate: e.candidate.toJSON() } });
