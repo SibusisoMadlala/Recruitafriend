@@ -123,7 +123,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       if (!peer.stream) continue;
       const el = peerVideoRefs.current.get(peer.id);
       if (el) {
-        el.srcObject = peer.stream; // always force — same ref may have gained a video track
+        // Only reassign srcObject when the stream reference actually changed —
+        // reassigning the same object causes a visible blink in some browsers.
+        if (el.srcObject !== peer.stream) {
+          el.srcObject = peer.stream;
+        }
         if (el.paused) el.play().catch((e: any) => {
           if (e?.name === 'NotAllowedError') setAudioBlocked(true);
         });
@@ -248,11 +252,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         let wasConnected = false;
         pc.ontrack = (e) => {
           wasConnected = true;
-          // Add track to our accumulator stream, then create a fresh MediaStream snapshot.
-          // A new object reference on every ontrack call forces el.srcObject reassignment
-          // on mobile (Android/iOS), where assigning the same MediaStream reference again
-          // after a new track is added does NOT trigger video to appear.
           remoteStream.addTrack(e.track);
+          // Only create a new snapshot and reassign srcObject when a video track arrives.
+          // Audio tracks don't affect what the video element renders, so updating srcObject
+          // for audio-only ontrack events just causes an unnecessary blink.
+          if (e.track.kind !== 'video') return;
           const snap = new MediaStream(remoteStream.getTracks());
           const el = peerVideoRefs.current.get(peerId);
           if (el) {
@@ -335,10 +339,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         const existingInfo = peersRef.current.get(peerId);
         const connBroken = existingInfo && (
           existingInfo.pc.iceConnectionState === 'failed' ||
-          existingInfo.pc.iceConnectionState === 'disconnected' ||
           existingInfo.pc.connectionState === 'failed' ||
-          existingInfo.pc.connectionState === 'closed' ||
-          existingInfo.pc.connectionState === 'disconnected'
+          existingInfo.pc.connectionState === 'closed'
         );
         if (connBroken) {
           existingInfo!.pc.close();
