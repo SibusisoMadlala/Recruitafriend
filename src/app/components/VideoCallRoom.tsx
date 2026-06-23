@@ -59,8 +59,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   ]);
   const myNameRef     = useRef(myName);
   myNameRef.current   = myName;
-  const panelRef      = useRef(panel);
-  panelRef.current    = panel;
 
   const [status, setStatus]             = useState<'starting'|'waiting'|'connected'|'reconnecting'|'error'>('starting');
   const [errorMsg, setErrorMsg]         = useState('');
@@ -70,6 +68,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [screenOn, setScreenOn]         = useState(false);
   const [handRaised, setHandRaised]     = useState(false);
   const [panel, setPanel]               = useState<'none'|'chat'|'people'>('none');
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
   const [fullscreen, setFullscreen]     = useState(false);
   const [messages, setMessages]         = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput]       = useState('');
