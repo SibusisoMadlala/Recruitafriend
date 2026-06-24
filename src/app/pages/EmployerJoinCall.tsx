@@ -17,7 +17,7 @@ export default function EmployerJoinCall() {
     <VideoCallRoom
       applicationId={callId}
       jobTitle="Interview Call"
-      isHost={false}
+      isHost={true}
       onClose={() => navigate('/employer/dashboard')}
     />
   );
