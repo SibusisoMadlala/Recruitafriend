@@ -245,7 +245,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         transcribingRef.current = false;
       }
     };
-    rec.onend = () => { if (transcribingRef.current) try { rec.start(); } catch {} };
+    rec.onend = () => {
+      if (!transcribingRef.current) return;
+      // Delay restart to avoid rapid cycling that causes repeated browser chimes
+      setTimeout(() => { if (transcribingRef.current) try { rec.start(); } catch {} }, 300);
+    };
     try { rec.start(); } catch {}
     speechRef.current = rec;
 
@@ -734,7 +738,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       setScreenOn(false);
     } else {
       try {
-        const screen = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: false });
+        const screen = await (navigator.mediaDevices as any).getDisplayMedia({ video: { frameRate: 30 }, audio: false });
         screenRef.current = screen;
         const screenTrack = screen.getVideoTracks()[0];
         peersRef.current.forEach(async ({ pc }) => {
@@ -742,9 +746,26 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           if (sender) await sender.replaceTrack(screenTrack);
         });
         if (localRef.current) localRef.current.srcObject = screen;
-        screenTrack.onended = () => toggleScreen();
+        // Inline cleanup to avoid stale closure on toggleScreen
+        screenTrack.onended = () => {
+          screenRef.current?.getTracks().forEach(t => t.stop());
+          screenRef.current = null;
+          const camTrack = streamRef.current?.getVideoTracks()[0];
+          if (camTrack) {
+            peersRef.current.forEach(async ({ pc }) => {
+              const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+              if (sender) await sender.replaceTrack(camTrack);
+            });
+            if (localRef.current) localRef.current.srcObject = streamRef.current;
+          }
+          setScreenOn(false);
+        };
         setScreenOn(true);
-      } catch {}
+      } catch (err: any) {
+        if (err?.name !== 'NotAllowedError') {
+          toast.error('Screen sharing failed: ' + (err?.message || 'not supported on this browser/device'));
+        }
+      }
     }
   }, [screenOn]);
 
