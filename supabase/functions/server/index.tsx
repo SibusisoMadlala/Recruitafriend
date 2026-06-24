@@ -2151,12 +2151,12 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
 
     let query = db
       .from('profiles')
-      .select('id, name, email, headline, summary, location, avatar_url, skills, experience, social_links, updated_at')
+      .select('id, name, email, headline, summary, location, avatar_url, skills, social_links, updated_at, cv_years_experience, cv_ai_summary, cv_job_titles, cv_qualifications, has_cv')
       .eq('user_type', 'seeker')
       .limit(500);
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,headline.ilike.%${search}%,summary.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,headline.ilike.%${search}%,summary.ilike.%${search}%,cv_ai_summary.ilike.%${search}%`);
     }
 
     if (location) {
@@ -2170,7 +2170,9 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
     }
 
     const normalized = (profiles || []).map((profile: any) => {
-      const yearsOfExperience = estimateYearsOfExperience(profile.experience);
+      const yearsOfExperience = typeof profile.cv_years_experience === 'number'
+        ? profile.cv_years_experience
+        : estimateYearsOfExperience(profile.experience);
       const normalizedSkills = Array.isArray(profile.skills)
         ? profile.skills.filter((s: unknown) => typeof s === 'string' && s.trim())
         : [];
@@ -2204,6 +2206,9 @@ app.get('/make-server-bca21fd3/employer/talent-search', async (c) => {
         candidate.summary,
         candidate.location,
         ...(Array.isArray(candidate.skills) ? candidate.skills : []),
+        ...(Array.isArray((candidate as any).cv_job_titles) ? (candidate as any).cv_job_titles : []),
+        ...(Array.isArray((candidate as any).cv_qualifications) ? (candidate as any).cv_qualifications : []),
+        (candidate as any).cv_ai_summary || '',
       ]
         .map((value) => String(value || '').toLowerCase())
         .join(' ');
