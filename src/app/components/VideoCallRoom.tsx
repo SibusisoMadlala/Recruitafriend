@@ -321,7 +321,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       let stream: MediaStream;
 
       const mediaRes = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 854 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       }).then(s => ({ status: 'fulfilled' as const, value: s }))
         .catch(e => ({ status: 'rejected' as const, reason: e }));
@@ -713,8 +713,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     try {
       await track.applyConstraints(
         next
-          ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
-          : { width: { ideal: 640 },  height: { ideal: 480 }, frameRate: { ideal: 24 } }
+          ? { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+          : { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 854 },  height: { ideal: 480 }, frameRate: { ideal: 24 } }
       );
       setHdMode(next);
       toast.success(next ? 'HD on — 720p' : 'HD off — standard quality');
