@@ -119,7 +119,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [audioDiag, setAudioDiag]       = useState({ localTracks: 0, remoteTracks: 0, micEnabled: true, receiving: false });
   const [recording, setRecording]       = useState(false);
   const [uploading, setUploading]       = useState(false);
-  const [hdMode, setHdMode]             = useState(false);
+  const [videoQuality, setVideoQuality] = useState<'normal' | 'hd' | 'low'>('normal');
   const mediaRecRef                     = useRef<MediaRecorder | null>(null);
   const audioCtxRef                     = useRef<AudioContext | null>(null);
   const rafIdRef                        = useRef<number | null>(null);
@@ -706,42 +706,43 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     if (t) { t.enabled = !t.enabled; setCamOn(t.enabled); }
   }, []);
 
-  const toggleHD = useCallback(async () => {
+  const cycleQuality = useCallback(async () => {
+    const next = videoQuality === 'normal' ? 'hd' : videoQuality === 'hd' ? 'low' : 'normal';
+
+    const camConstraints = {
+      hd:     { aspectRatio: { ideal: 16/9 }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      normal: { aspectRatio: { ideal: 16/9 }, width: { ideal: 854  }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
+      low:    { aspectRatio: { ideal: 16/9 }, width: { ideal: 640  }, height: { ideal: 360 }, frameRate: { ideal: 15 } },
+    };
+    const encParams = {
+      hd:     { maxBitrate: 2_500_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+      normal: { maxBitrate: 800_000,   maxFramerate: 24, scaleResolutionDownBy: 1 },
+      low:    { maxBitrate: 350_000,   maxFramerate: 15, scaleResolutionDownBy: 2 },
+    };
+
     const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) { toast.error('No camera active'); return; }
-    const next = !hdMode;
-    try {
-      // 1. Raise/lower camera capture resolution
-      await track.applyConstraints(
-        next
-          ? { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
-          : { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 854 },  height: { ideal: 480 }, frameRate: { ideal: 24 } }
-      );
-      // 2. Raise/lower WebRTC send bitrate so the remote side actually sees the quality change
-      peersRef.current.forEach(({ pc }) => {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (!sender) return;
-        const params = sender.getParameters();
-        if (!params.encodings?.length) params.encodings = [{}];
-        params.encodings.forEach(enc => {
-          if (next) {
-            enc.maxBitrate       = 2_500_000; // 2.5 Mbps — true HD
-            enc.maxFramerate     = 30;
-            enc.scaleResolutionDownBy = 1;
-          } else {
-            enc.maxBitrate       = 500_000;   // 500 kbps — SD
-            enc.maxFramerate     = 24;
-            enc.scaleResolutionDownBy = 2;
-          }
-        });
-        sender.setParameters(params).catch(() => {});
-      });
-      setHdMode(next);
-      toast.success(next ? 'HD on — 720p @ 2.5 Mbps' : 'HD off');
-    } catch {
-      toast.error('Could not switch quality');
+    if (track) {
+      try { await track.applyConstraints(camConstraints[next]); } catch {}
     }
-  }, [hdMode]);
+
+    peersRef.current.forEach(({ pc }) => {
+      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+      if (!sender) return;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) params.encodings = [{}];
+      const p = encParams[next];
+      params.encodings.forEach(enc => {
+        enc.maxBitrate            = p.maxBitrate;
+        enc.maxFramerate          = p.maxFramerate;
+        enc.scaleResolutionDownBy = p.scaleResolutionDownBy;
+      });
+      sender.setParameters(params).catch(() => {});
+    });
+
+    setVideoQuality(next);
+    const labels = { hd: 'HD — 720p (needs good WiFi)', normal: 'Normal quality', low: 'Low Data — saves mobile data' };
+    toast.success(labels[next]);
+  }, [videoQuality]);
 
   const toggleScreen = useCallback(async () => {
     if (screenOn) {
@@ -1814,12 +1815,18 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             {camOn ? 'Cam Off' : 'Cam On'}
           </button>
           <button
-            onClick={() => void toggleHD()}
-            style={{ ...Btn(hdMode), background: hdMode ? '#0d7537' : 'rgba(255,255,255,0.15)', position: 'relative', border: hdMode ? '2px solid #4ade80' : '2px solid transparent' }}
+            onClick={() => void cycleQuality()}
+            style={{
+              ...Btn(true),
+              background: videoQuality === 'hd' ? '#0d7537' : videoQuality === 'low' ? '#92400e' : 'rgba(255,255,255,0.15)',
+              border: videoQuality === 'hd' ? '2px solid #4ade80' : videoQuality === 'low' ? '2px solid #fbbf24' : '2px solid transparent',
+              position: 'relative',
+            }}
           >
-            <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: -0.5, color: hdMode ? '#4ade80' : '#fff' }}>HD</span>
-            {hdMode ? '720p' : 'HD'}
-            {hdMode && <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />}
+            <span style={{ fontSize: 11, fontWeight: 900, color: videoQuality === 'hd' ? '#4ade80' : videoQuality === 'low' ? '#fbbf24' : '#fff' }}>
+              {videoQuality === 'hd' ? 'HD' : videoQuality === 'low' ? 'LO' : 'SD'}
+            </span>
+            {videoQuality === 'hd' ? '720p' : videoQuality === 'low' ? 'Low Data' : 'Quality'}
           </button>
           <button onClick={toggleScreen} style={Btn(!screenOn)}>
             {screenOn ? <MonitorOff size={18} /> : <Monitor size={18} />}
