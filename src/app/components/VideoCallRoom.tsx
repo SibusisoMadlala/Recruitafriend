@@ -119,6 +119,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [audioDiag, setAudioDiag]       = useState({ localTracks: 0, remoteTracks: 0, micEnabled: true, receiving: false });
   const [recording, setRecording]       = useState(false);
   const [uploading, setUploading]       = useState(false);
+  const [hdMode, setHdMode]             = useState(false);
   const mediaRecRef                     = useRef<MediaRecorder | null>(null);
   const audioCtxRef                     = useRef<AudioContext | null>(null);
   const rafIdRef                        = useRef<number | null>(null);
@@ -700,6 +701,23 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     const t = streamRef.current?.getVideoTracks()[0];
     if (t) { t.enabled = !t.enabled; setCamOn(t.enabled); }
   }, []);
+
+  const toggleHD = useCallback(async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) { toast.error('No camera active'); return; }
+    const next = !hdMode;
+    try {
+      await track.applyConstraints(
+        next
+          ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+          : { width: { ideal: 640 },  height: { ideal: 480 }, frameRate: { ideal: 24 } }
+      );
+      setHdMode(next);
+      toast.success(next ? 'HD on — 720p' : 'HD off — standard quality');
+    } catch {
+      toast.error('Your camera does not support HD');
+    }
+  }, [hdMode]);
 
   const toggleScreen = useCallback(async () => {
     if (screenOn) {
@@ -1753,6 +1771,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           <button onClick={toggleCam} style={Btn(camOn)}>
             {camOn ? <Video size={18} /> : <VideoOff size={18} />}
             {camOn ? 'Cam Off' : 'Cam On'}
+          </button>
+          <button
+            onClick={() => void toggleHD()}
+            style={{ ...Btn(hdMode), background: hdMode ? '#0d7537' : 'rgba(255,255,255,0.15)', position: 'relative' }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.5 }}>HD</span>
+            {hdMode ? 'HD On' : 'HD Off'}
+            {hdMode && <span style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />}
           </button>
           <button onClick={toggleScreen} style={Btn(!screenOn)}>
             {screenOn ? <MonitorOff size={18} /> : <Monitor size={18} />}
