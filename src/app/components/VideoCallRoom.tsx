@@ -83,6 +83,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [spotlightId, setSpotlightId]   = useState<string|null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [connStatus, setConnStatus]     = useState('');
+  const [audioDiag, setAudioDiag]       = useState({ localTracks: 0, remoteTracks: 0, micEnabled: true, receiving: false });
   const [recording, setRecording]       = useState(false);
   const mediaRecRef                     = useRef<MediaRecorder | null>(null);
   const audioCtxRef                     = useRef<AudioContext | null>(null);
@@ -235,6 +236,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       stream = mediaRes.value;
       if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
 
+      // ── Audio diagnostics: getUserMedia result ──
+      const localAudio = stream.getAudioTracks();
+      console.log(`[Audio] getUserMedia: audioTracks=${localAudio.length} videoTracks=${stream.getVideoTracks().length}`);
+      localAudio.forEach((t, i) => console.log(`[Audio] localTrack[${i}]: enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState} id=${t.id.slice(0,8)}`));
+      setAudioDiag(d => ({ ...d, localTracks: localAudio.length, micEnabled: localAudio[0]?.enabled ?? false }));
+
       streamRef.current = stream;
       if (localRef.current) { localRef.current.srcObject = stream; localRef.current.play().catch(() => {}); }
 
@@ -249,17 +256,28 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           iceServers: iceServersRef.current,
           iceTransportPolicy: 'relay',
         });
-        streamRef.current?.getTracks().forEach(t => pc.addTrack(t, streamRef.current!));
+        streamRef.current?.getTracks().forEach(t => {
+          console.log(`[Audio] addTrack to PC: kind=${t.kind} enabled=${t.enabled} readyState=${t.readyState} peer=${peerId.slice(0,8)}`);
+          pc.addTrack(t, streamRef.current!);
+        });
         // Only reconnect if video was flowing before — not during initial ICE negotiation
         let wasConnected = false;
         pc.ontrack = (e) => {
           wasConnected = true;
           remoteStream.addTrack(e.track);
           const snap = new MediaStream(remoteStream.getTracks());
+          const snapAudio = snap.getAudioTracks().length;
+          const snapVideo = snap.getVideoTracks().length;
+          console.log(`[Audio] ontrack: kind=${e.track.kind} enabled=${e.track.enabled} muted=${e.track.muted} readyState=${e.track.readyState} peer=${peerId.slice(0,8)}`);
+          console.log(`[Audio] remoteStream now: audio=${snapAudio} video=${snapVideo}`);
+          setAudioDiag(d => ({ ...d, remoteTracks: snapAudio, receiving: snapAudio > 0 }));
           const el = peerVideoRefs.current.get(peerId);
           if (el) {
+            el.muted = false;
+            el.volume = 1;
             el.srcObject = snap;
             el.play().catch((err: any) => {
+              console.log(`[Audio] ontrack play() error: name=${err?.name} msg=${err?.message}`);
               if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') setAudioBlocked(true);
             });
           }
@@ -532,7 +550,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   // ─── Controls ────────────────────────────────────────────────────────────
   const toggleMic = useCallback(() => {
     const t = streamRef.current?.getAudioTracks()[0];
-    if (t) { t.enabled = !t.enabled; setMicOn(t.enabled); }
+    if (t) {
+      t.enabled = !t.enabled;
+      console.log(`[Audio] toggleMic: enabled=${t.enabled} readyState=${t.readyState}`);
+      setMicOn(t.enabled);
+      setAudioDiag(d => ({ ...d, micEnabled: t.enabled }));
+    }
   }, []);
 
   const toggleCam = useCallback(() => {
@@ -679,10 +702,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   function peerVideoRef(el: HTMLVideoElement | null, peerId: string, stream: MediaStream | null) {
     if (el) {
       peerVideoRefs.current.set(peerId, el);
+      // Always enforce unmuted + full volume — mobile browsers can silently mute elements
+      el.muted = false;
+      el.volume = 1;
       if (stream) {
         if (el.srcObject !== stream) {
           el.srcObject = stream;
           el.play().catch((e: any) => {
+            console.log(`[Audio] peerVideoRef play() error: ${e?.name}`);
             if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') setAudioBlocked(true);
           });
         } else if (el.paused) {
@@ -721,15 +748,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
   function handleTileClick(id: string) {
     setSpotlightId(prev => prev === id ? null : id);
-    // Unlock audio on any user tap (fixes mobile autoplay block)
     if (audioBlocked) {
-      peerVideoRefs.current.forEach(el => { el.play().catch(() => {}); });
+      peerVideoRefs.current.forEach(el => { el.muted = false; el.volume = 1; el.play().catch(() => {}); });
       setAudioBlocked(false);
     }
   }
 
   function unlockAudio() {
-    peerVideoRefs.current.forEach(el => { el.play().catch(() => {}); });
+    peerVideoRefs.current.forEach(el => { el.muted = false; el.volume = 1; el.play().catch(() => {}); });
     setAudioBlocked(false);
   }
 
@@ -873,6 +899,16 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   <div style={{ position: 'absolute', top: 8, left: 8, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '2px 6px', borderRadius: 4 }}>⤢ tap</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Audio diagnostic overlay ── */}
+          {status === 'connected' && (
+            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 10, padding: '5px 8px', borderRadius: 6, zIndex: 50, lineHeight: 1.7, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+              <div>Local audio tracks: {audioDiag.localTracks}</div>
+              <div>Remote audio tracks: {audioDiag.remoteTracks}</div>
+              <div>Mic enabled: {audioDiag.micEnabled ? 'yes' : 'NO'}</div>
+              <div>Remote audio received: {audioDiag.receiving ? 'yes' : 'NO'}</div>
             </div>
           )}
 
