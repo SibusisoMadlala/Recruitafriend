@@ -1774,11 +1774,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           </button>
           <button
             onClick={() => void toggleHD()}
-            style={{ ...Btn(hdMode), background: hdMode ? '#0d7537' : 'rgba(255,255,255,0.15)', position: 'relative' }}
+            style={{ ...Btn(hdMode), background: hdMode ? '#0d7537' : 'rgba(255,255,255,0.15)', position: 'relative', border: hdMode ? '2px solid #4ade80' : '2px solid transparent' }}
           >
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.5 }}>HD</span>
-            {hdMode ? 'HD On' : 'HD Off'}
-            {hdMode && <span style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />}
+            <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: -0.5, color: hdMode ? '#4ade80' : '#fff' }}>HD</span>
+            {hdMode ? '720p' : 'HD'}
+            {hdMode && <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />}
           </button>
           <button onClick={toggleScreen} style={Btn(!screenOn)}>
             {screenOn ? <MonitorOff size={18} /> : <Monitor size={18} />}
