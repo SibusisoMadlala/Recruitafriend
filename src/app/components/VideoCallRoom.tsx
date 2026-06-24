@@ -711,15 +711,35 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     if (!track) { toast.error('No camera active'); return; }
     const next = !hdMode;
     try {
+      // 1. Raise/lower camera capture resolution
       await track.applyConstraints(
         next
           ? { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
           : { aspectRatio: { ideal: 16 / 9 }, width: { ideal: 854 },  height: { ideal: 480 }, frameRate: { ideal: 24 } }
       );
+      // 2. Raise/lower WebRTC send bitrate so the remote side actually sees the quality change
+      peersRef.current.forEach(({ pc }) => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (!sender) return;
+        const params = sender.getParameters();
+        if (!params.encodings?.length) params.encodings = [{}];
+        params.encodings.forEach(enc => {
+          if (next) {
+            enc.maxBitrate       = 2_500_000; // 2.5 Mbps — true HD
+            enc.maxFramerate     = 30;
+            enc.scaleResolutionDownBy = 1;
+          } else {
+            enc.maxBitrate       = 500_000;   // 500 kbps — SD
+            enc.maxFramerate     = 24;
+            enc.scaleResolutionDownBy = 2;
+          }
+        });
+        sender.setParameters(params).catch(() => {});
+      });
       setHdMode(next);
-      toast.success(next ? 'HD on — 720p' : 'HD off — standard quality');
+      toast.success(next ? 'HD on — 720p @ 2.5 Mbps' : 'HD off');
     } catch {
-      toast.error('Your camera does not support HD');
+      toast.error('Could not switch quality');
     }
   }, [hdMode]);
 
