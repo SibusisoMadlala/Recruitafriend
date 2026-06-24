@@ -44,6 +44,7 @@ import CommunityBlogSubmit from './pages/CommunityBlogSubmit';
 import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import EmployerTeam from './pages/EmployerTeam';
 import EmployerJoinCall from './pages/EmployerJoinCall';
+import InterviewNotesPage from './pages/InterviewNotesPage';
 import GuestJoinCall from './pages/GuestJoinCall';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
@@ -114,6 +115,7 @@ export const router = createBrowserRouter([
         { path: 'applicants', Component: EmployerApplicants },
         { path: 'talent-search', Component: TalentSearch },
         { path: 'interviews', Component: EmployerInterviews },
+        { path: 'interview-notes', Component: InterviewNotesPage },
         { path: 'team', Component: EmployerTeam },
         { path: 'analytics', Component: EmployerAnalytics },
         { path: 'subscriptions', Component: EmployerSubscriptions },
