@@ -13,7 +13,8 @@ import {
   BarChart2,
   LogOut,
   Menu,
-  X
+  X,
+  CircleDot,
 } from 'lucide-react';
 
 interface EmployerSidebarProps {
@@ -68,6 +69,7 @@ export function EmployerSidebar({ isOpen: controlledIsOpen, onOpenChange, showMo
     { icon: Briefcase, label: 'My Listings', path: '/employer/listings' },
     { icon: Users, label: 'Applicants', path: '/employer/applicants' },
     { icon: Video, label: 'Video Interviews', path: '/employer/interviews' },
+    { icon: CircleDot, label: 'Recorded Calls', path: '/employer/recorded-calls' },
     { icon: Users2, label: 'My Team', path: '/employer/team' },
     { icon: Search, label: 'Talent Search', path: '/employer/talent-search' },
     { icon: Building2, label: 'Company Profile', path: '/employer/profile' },

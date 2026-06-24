@@ -118,8 +118,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [connStatus, setConnStatus]     = useState('');
   const [audioDiag, setAudioDiag]       = useState({ localTracks: 0, remoteTracks: 0, micEnabled: true, receiving: false });
   const [recording, setRecording]       = useState(false);
+  const [uploading, setUploading]       = useState(false);
   const mediaRecRef                     = useRef<MediaRecorder | null>(null);
   const audioCtxRef                     = useRef<AudioContext | null>(null);
+  const rafIdRef                        = useRef<number | null>(null);
   const [notes, setNotes]               = useState('');
   const [notesSaved, setNotesSaved]     = useState(false);
 
@@ -757,20 +759,58 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     const remotePeer = Array.from(peersRef.current.values())[0];
     if (!remotePeer) { toast.error('No one else is in the call yet.'); return; }
     try {
-      const ctx = new AudioContext();
-      audioCtxRef.current = ctx;
-      const dest = ctx.createMediaStreamDestination();
+      // ── Canvas composite: split-screen local (left) + remote (right) ──
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const drawCtx = canvas.getContext('2d')!;
+
+      function drawFrame() {
+        const localEl  = localRef.current;
+        const remoteEl = peerVideoRefs.current.get(remotePeer.id);
+        drawCtx.fillStyle = '#111';
+        drawCtx.fillRect(0, 0, 1280, 720);
+        // Left half — local camera (un-mirror so it looks natural in recording)
+        if (localEl && localEl.readyState >= 2) {
+          drawCtx.save();
+          drawCtx.translate(640, 0);
+          drawCtx.scale(-1, 1);
+          drawCtx.drawImage(localEl, 0, 0, 640, 720);
+          drawCtx.restore();
+        }
+        // Right half — remote
+        if (remoteEl && remoteEl.readyState >= 2) {
+          drawCtx.drawImage(remoteEl, 640, 0, 640, 720);
+        }
+        // Name labels
+        drawCtx.fillStyle = 'rgba(0,0,0,0.55)';
+        drawCtx.fillRect(0, 678, 200, 42);
+        drawCtx.fillRect(640, 678, 200, 42);
+        drawCtx.fillStyle = '#fff';
+        drawCtx.font = 'bold 15px sans-serif';
+        drawCtx.fillText('You', 10, 705);
+        drawCtx.fillText(remotePeer.name || 'Candidate', 650, 705);
+        rafIdRef.current = requestAnimationFrame(drawFrame);
+      }
+      drawFrame();
+
+      // ── Mixed audio ──
+      const audioCtx = new AudioContext();
+      audioCtxRef.current = audioCtx;
+      const dest = audioCtx.createMediaStreamDestination();
       streamRef.current?.getAudioTracks().forEach(t =>
-        ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)
+        audioCtx.createMediaStreamSource(new MediaStream([t])).connect(dest)
       );
       remotePeer.stream.getAudioTracks().forEach(t =>
-        ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)
+        audioCtx.createMediaStreamSource(new MediaStream([t])).connect(dest)
       );
-      const videoTrack = remotePeer.stream.getVideoTracks()[0];
+
+      const canvasStream = canvas.captureStream(25);
       const combined = new MediaStream([
-        ...(videoTrack ? [videoTrack] : []),
+        ...canvasStream.getVideoTracks(),
         ...dest.stream.getTracks(),
       ]);
+
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
         ? 'video/webm;codecs=vp8,opus'
         : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '';
@@ -778,17 +818,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       const chunks: Blob[] = [];
       rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `interview-${applicationId}-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        ctx.close();
+        if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+        audioCtx.close();
         audioCtxRef.current = null;
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        void uploadRecording(blob);
       };
       rec.start();
       mediaRecRef.current = rec;
@@ -803,7 +837,42 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     mediaRecRef.current?.stop();
     mediaRecRef.current = null;
     setRecording(false);
-    toast.success('Recording saved — check your downloads');
+  }
+
+  async function uploadRecording(blob: Blob) {
+    setUploading(true);
+    const ts = Date.now();
+    const filePath = `${applicationId}/${ts}.webm`;
+    try {
+      const { data, error } = await supabase.storage
+        .from('call-recordings')
+        .upload(filePath, blob, { contentType: 'video/webm', upsert: false });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from('call-recordings').getPublicUrl(data.path);
+      await supabase.from('call_recordings').insert({
+        application_id: applicationId,
+        employer_id: user?.id || null,
+        job_title: jobTitle || null,
+        candidate_name: candidateName || null,
+        storage_path: data.path,
+        video_url: urlData.publicUrl,
+        recorded_at: new Date().toISOString(),
+      });
+      toast.success('Recording saved to your dashboard!');
+    } catch {
+      // Fallback: offer download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `interview-${applicationId}-${ts}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Recording downloaded (could not save to dashboard)');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function saveNotes() {
@@ -1732,11 +1801,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           {isHost && (
             <button
               onClick={recording ? stopRecording : startRecording}
-              style={{ ...Btn(true), background: recording ? '#dc2626' : 'rgba(255,255,255,0.15)', position: 'relative' }}
+              disabled={uploading}
+              style={{ ...Btn(true), background: uploading ? 'rgba(255,255,255,0.1)' : recording ? '#dc2626' : 'rgba(255,255,255,0.15)', position: 'relative', opacity: uploading ? 0.7 : 1 }}
             >
-              {recording ? <Square size={18} fill="#fff" /> : <Circle size={18} color="#dc2626" fill="#dc2626" />}
-              {recording ? 'Stop Rec' : 'Record'}
-              {recording && (
+              {uploading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : recording ? <Square size={18} fill="#fff" /> : <Circle size={18} color="#dc2626" fill="#dc2626" />}
+              {uploading ? 'Saving…' : recording ? 'Stop Rec' : 'Record'}
+              {recording && !uploading && (
                 <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: '#fff', animation: 'rfSpin 1s linear infinite' }} />
               )}
             </button>

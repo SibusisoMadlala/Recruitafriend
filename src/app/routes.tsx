@@ -49,6 +49,7 @@ import CvDatabase from './pages/CvDatabase';
 import AiTalentMatch from './pages/AiTalentMatch';
 import CvBuilder from './pages/CvBuilder';
 import GuestJoinCall from './pages/GuestJoinCall';
+import RecordedCalls from './pages/RecordedCalls';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminOnboardingQueue from './pages/AdminOnboardingQueue';
@@ -122,6 +123,7 @@ export const router = createBrowserRouter([
         { path: 'interview-notes', Component: InterviewNotesPage },
         { path: 'cv-database', Component: CvDatabase },
         { path: 'ai-talent-match', Component: AiTalentMatch },
+        { path: 'recorded-calls', Component: RecordedCalls },
         { path: 'team', Component: EmployerTeam },
         { path: 'analytics', Component: EmployerAnalytics },
         { path: 'subscriptions', Component: EmployerSubscriptions },
