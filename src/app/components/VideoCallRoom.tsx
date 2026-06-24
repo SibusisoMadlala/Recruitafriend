@@ -238,6 +238,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     rec.onend = () => { if (transcribingRef.current) try { rec.start(); } catch {} };
     try { rec.start(); } catch {}
     speechRef.current = rec;
+
+    // Re-play any remote audio elements that may have been interrupted by SpeechRecognition
+    setTimeout(() => {
+      document.querySelectorAll<HTMLAudioElement>('audio').forEach(a => {
+        if (a.paused) a.play().catch(() => {});
+      });
+    }, 500);
+
     return () => {
       transcribingRef.current = false;
       try { speechRef.current?.stop(); } catch {}
@@ -1262,15 +1270,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             </div>
           )}
 
-          {/* ── Audio diagnostic overlay ── */}
-          {status === 'connected' && (
-            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 10, padding: '5px 8px', borderRadius: 6, zIndex: 50, lineHeight: 1.7, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-              <div>Local audio tracks: {audioDiag.localTracks}</div>
-              <div>Remote audio tracks: {audioDiag.remoteTracks}</div>
-              <div>Mic enabled: {audioDiag.micEnabled ? 'yes' : 'NO'}</div>
-              <div>Remote audio received: {audioDiag.receiving ? 'yes' : 'NO'}</div>
-            </div>
-          )}
 
           {/* ── Tap-to-enable-audio banner (mobile autoplay block) ── */}
           {audioBlocked && (
@@ -1489,7 +1488,18 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                     <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'rfSpin 1s ease-in-out infinite alternate' }} />
                       <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Recording transcript…</span>
-                      <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{transcript.length} lines</span>
+                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{transcript.length} lines</span>
+                      <button
+                        onClick={() => {
+                          transcribingRef.current = false;
+                          try { speechRef.current?.stop(); } catch {}
+                          speechRef.current = null;
+                          setAiConsentState('idle');
+                        }}
+                        style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Stop
+                      </button>
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
                       {transcript.length === 0 && (
