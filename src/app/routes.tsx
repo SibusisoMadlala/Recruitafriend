@@ -45,6 +45,9 @@ import EmployerOnboardingStatus from './pages/EmployerOnboardingStatus';
 import EmployerTeam from './pages/EmployerTeam';
 import EmployerJoinCall from './pages/EmployerJoinCall';
 import InterviewNotesPage from './pages/InterviewNotesPage';
+import CvDatabase from './pages/CvDatabase';
+import AiTalentMatch from './pages/AiTalentMatch';
+import CvBuilder from './pages/CvBuilder';
 import GuestJoinCall from './pages/GuestJoinCall';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
@@ -88,6 +91,7 @@ export const router = createBrowserRouter([
       { path: 'network', Component: Networking },
       { path: 'subscriptions', Component: SeekerSubscriptions },
       { path: 'notifications', Component: SeekerNotifications },
+      { path: 'cv-builder', Component: CvBuilder },
     ]
   },
   
@@ -116,6 +120,8 @@ export const router = createBrowserRouter([
         { path: 'talent-search', Component: TalentSearch },
         { path: 'interviews', Component: EmployerInterviews },
         { path: 'interview-notes', Component: InterviewNotesPage },
+        { path: 'cv-database', Component: CvDatabase },
+        { path: 'ai-talent-match', Component: AiTalentMatch },
         { path: 'team', Component: EmployerTeam },
         { path: 'analytics', Component: EmployerAnalytics },
         { path: 'subscriptions', Component: EmployerSubscriptions },

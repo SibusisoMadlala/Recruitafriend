@@ -129,6 +129,12 @@ export default function SeekerCV() {
       });
       setFiles((prev) => [createdFile, ...prev]);
       toast.success('CV uploaded successfully');
+      toast.info('Extracting CV data with AI…');
+      supabase.functions.invoke('extract-cv', {
+        body: { fileId: createdFile.id, storageBucket, storagePath, mimeType: file.type || null },
+      }).then(({ error }) => {
+        if (!error) toast.success('CV data extracted and profile updated!');
+      }).catch(() => {});
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to upload CV';
       toast.error(errorMessage);
