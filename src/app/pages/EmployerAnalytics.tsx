@@ -75,18 +75,66 @@ export default function EmployerAnalytics() {
   }, []);
 
   function exportCsv() {
-    const rows = [
-      ['Date', 'Applications'],
-      ...buildChartData(allApplications, dayCount).map(r => [r.name, String(r.apps)]),
-    ];
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const row = (...cells: (string | number)[]) => cells.map(c => q(c)).join(',');
+    const blank = '';
+    const now = new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const lines: string[] = [];
+
+    // ── Section 1: Report header ──
+    lines.push(row('RecruitFriend Analytics Report'));
+    lines.push(row('Generated', now));
+    lines.push(row('Period', rangeLabel));
+    lines.push(blank);
+
+    // ── Section 2: Summary metrics ──
+    lines.push(row('SUMMARY METRICS', ''));
+    lines.push(row('Metric', 'Value'));
+    lines.push(row('Total Job Views', statsData.views));
+    lines.push(row(`Applications (${rangeLabel})`, rangeApps.length));
+    lines.push(row(`Interviews / Offers (${rangeLabel})`, rangeApps.filter(a => a.status === 'offer' || a.status === 'interview').length));
+    lines.push(row('Avg Days to First Application', statsData.avgDays));
+    lines.push(blank);
+
+    // ── Section 3: Conversion funnel ──
+    lines.push(row('CONVERSION FUNNEL', ''));
+    lines.push(row('Stage', 'Count', 'Conversion Rate'));
+    lines.push(row('Job Views', funnelViews, '100%'));
+    lines.push(row('Applications', funnelApps, funnelViews ? `${Math.round((funnelApps / funnelViews) * 100)}%` : '0%'));
+    lines.push(row('Interviews', funnelIntvw, funnelApps ? `${Math.round((funnelIntvw / funnelApps) * 100)}%` : '0%'));
+    lines.push(row('Offers', funnelHired, funnelIntvw ? `${Math.round((funnelHired / funnelIntvw) * 100)}%` : '0%'));
+    lines.push(blank);
+
+    // ── Section 4: Applications over time ──
+    lines.push(row('APPLICATIONS OVER TIME', ''));
+    lines.push(row('Date', 'Applications'));
+    buildChartData(allApplications, dayCount).forEach(r => lines.push(row(r.name, r.apps)));
+    lines.push(blank);
+
+    // ── Section 5: Individual applications ──
+    lines.push(row('ALL APPLICATIONS IN PERIOD', ''));
+    lines.push(row('Date Applied', 'Job Title', 'Applicant Name', 'Applicant Email', 'Status'));
+    rangeApps.forEach(a => {
+      const date = new Date(a.created_at).toLocaleDateString('en-ZA');
+      const title = a.job?.title || a.job_title || 'N/A';
+      const name  = a.seeker?.name || a.candidate_name || 'N/A';
+      const email = a.seeker?.email || a.candidate_email || 'N/A';
+      const status = String(a.status || 'pending').replace(/_/g, ' ');
+      lines.push(row(date, title, name, email, status));
+    });
+
+    // UTF-8 BOM so Excel / MS365 / Google Sheets opens it correctly
+    const BOM = '﻿';
+    const csv = BOM + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `recruitfriend-analytics-${dateRange}.csv`;
+    a.download = `RecruitFriend_Analytics_${dateRange}_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('Analytics exported — open with Excel or Google Sheets');
   }
 
   const dayCount = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
