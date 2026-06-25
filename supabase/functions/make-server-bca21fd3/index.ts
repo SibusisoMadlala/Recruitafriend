@@ -3650,6 +3650,47 @@ app.delete('/make-server-bca21fd3/cv/files/:id', async (c) => {
   }
 });
 
+// ============== AI CV IMPROVE ==============
+
+app.post('/make-server-bca21fd3/ai/cv-improve', async (c) => {
+  try {
+    const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+    if (!ANTHROPIC_KEY) return c.json({ error: 'AI not configured' }, 500);
+
+    const { text, section, targetRole } = await c.req.json();
+    if (!text?.trim()) return c.json({ error: 'text is required' }, 400);
+
+    const roleCtx = targetRole ? ` The candidate is targeting the role of: ${targetRole}.` : '';
+    const prompts: Record<string, string> = {
+      summary: `Rewrite this professional summary for a CV to be more compelling and professional.${roleCtx} Keep it 2-3 sentences. Return ONLY the rewritten text:\n\n${text}`,
+      skills: `Expand and improve this skills list for a CV.${roleCtx} Format as a clean comma-separated list. Return ONLY the skills list:\n\n${text}`,
+      default: `Improve this CV text to be more professional and impactful.${roleCtx} Use action verbs where possible. Return ONLY the improved text:\n\n${text}`,
+    };
+    const prompt = prompts[section] ?? prompts.default;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!res.ok) return c.json({ error: 'AI request failed' }, 500);
+    const result = await res.json();
+    const improved = result.content?.[0]?.text?.trim() ?? '';
+    return c.json({ improved });
+  } catch (err) {
+    console.error('AI cv improve error:', err);
+    return c.json({ error: 'AI improve failed' }, 500);
+  }
+});
+
 // ============== SUBSCRIPTIONS ==============
 
 app.post('/make-server-bca21fd3/subscriptions/change', async (c) => {

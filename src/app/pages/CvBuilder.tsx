@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Sparkles, Loader2, Plus, Trash2, Download, Save, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, apiCall } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 
@@ -244,10 +244,11 @@ export default function CvBuilder() {
     if (!currentText.trim()) { toast.error('Enter some text first, then click AI Improve.'); return; }
     setRewriting(field);
     try {
-      const { data, error } = await supabase.functions.invoke('ai-cv-assistant', {
-        body: { text: currentText, section: field, targetRole: cv.targetRole },
+      const data = await apiCall('/ai/cv-improve', {
+        method: 'POST',
+        body: JSON.stringify({ text: currentText, section: field, targetRole: cv.targetRole }),
       });
-      if (error) throw new Error(error.message);
+      if (data.error) throw new Error(data.error);
       const improved: string = data.improved;
       if (field === 'summary') set('summary', improved);
       else if (field === 'skills') set('skills', improved);

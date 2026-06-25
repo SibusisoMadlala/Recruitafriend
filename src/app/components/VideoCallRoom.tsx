@@ -42,9 +42,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const localRef      = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useCallback((el: HTMLVideoElement | null) => {
     localRef.current = el;
-    if (el && streamRef.current) {
-      el.srcObject = streamRef.current;
-      el.play().catch(() => {});
+    if (el) {
+      const src = screenRef.current || streamRef.current;
+      if (src) { el.srcObject = src; el.play().catch(() => {}); }
     }
   }, []);
   const streamRef     = useRef<MediaStream | null>(null);
@@ -273,6 +273,14 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           console.log(`[Audio] addTrack to PC: kind=${t.kind} enabled=${t.enabled} readyState=${t.readyState} peer=${peerId.slice(0,8)}`);
           pc.addTrack(t, streamRef.current!);
         });
+        // If screen sharing is already active when a new peer joins, send them the screen track
+        if (screenRef.current) {
+          const screenTrack = screenRef.current.getVideoTracks()[0];
+          if (screenTrack) {
+            const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) sender.replaceTrack(screenTrack).catch(() => {});
+          }
+        }
         // Only reconnect if video was flowing before — not during initial ICE negotiation
         let wasConnected = false;
         pc.ontrack = (e) => {
@@ -892,9 +900,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
   // Sync local video stream whenever the video element remounts (layout change)
   useEffect(() => {
-    if (localRef.current && streamRef.current) {
-      if (localRef.current.srcObject !== streamRef.current) {
-        localRef.current.srcObject = streamRef.current;
+    if (localRef.current) {
+      const src = screenRef.current || streamRef.current;
+      if (src && localRef.current.srcObject !== src) {
+        localRef.current.srcObject = src;
         localRef.current.play().catch(() => {});
       }
     }
@@ -1067,6 +1076,15 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             </div>
           )}
 
+
+          {/* ── Recording badge ── */}
+          {recording && (
+            <div style={{ position: 'absolute', top: 12, left: 12, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(220,38,38,0.92)', color: '#fff', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', display: 'inline-block', animation: 'rfBlink 1s ease-in-out infinite alternate' }} />
+              Recording in progress
+              <style>{`@keyframes rfBlink{0%{opacity:1}100%{opacity:0.2}}`}</style>
+            </div>
+          )}
 
           {/* ── Tap-to-enable-audio banner (mobile autoplay block) ── */}
           {audioBlocked && (
