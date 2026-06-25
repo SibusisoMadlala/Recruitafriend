@@ -1335,7 +1335,8 @@ app.get('/make-server-bca21fd3/jobs', async (c) => {
       query = query.eq('employment_type', jobType);
     }
     if (industry) {
-      query = query.eq('industry', industry);
+      const vals = industry.split(',').map((v: string) => v.trim()).filter(Boolean);
+      query = vals.length === 1 ? query.eq('industry', vals[0]) : query.in('industry', vals);
     }
     if (minSalary) {
       query = query.gte('salary_max', parseInt(minSalary));

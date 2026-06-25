@@ -108,9 +108,9 @@ export default function JobSearch() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[var(--rf-navy)] mb-2">
             {loading ? 'Loading...' : `${jobs.length} Jobs Found`}
-            {searchParams.get('industry') && (
+            {(searchParams.get('industryLabel') || searchParams.get('industry')) && (
               <span className="ml-3 text-lg font-medium text-[var(--rf-green)]">
-                in {searchParams.get('industry')}
+                in {searchParams.get('industryLabel') || searchParams.get('industry')}
               </span>
             )}
           </h1>

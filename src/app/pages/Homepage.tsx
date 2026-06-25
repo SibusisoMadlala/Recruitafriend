@@ -8,9 +8,25 @@ import {
   Coffee, Scale, LandPlot, Palette, Truck
 } from 'lucide-react';
 import { LocationAutocomplete } from '../components/LocationAutocomplete';
-import { apiCall } from '../lib/supabase';
+import { apiCall, supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 import { resolveCompanyName } from '../lib/companyDisplay';
+
+// Maps each display category to the actual industry values stored in the DB (PostJob form)
+const INDUSTRY_MAP: Record<string, string[]> = {
+  'IT & Tech':            ['it-telecommunications'],
+  'Finance & Accounting': ['accounting-auditing', 'banking-financial-services', 'insurance', 'consulting'],
+  'Healthcare':           ['healthcare-medical-pharmaceutical'],
+  'Engineering':          ['engineering', 'energy-utilities', 'mining-resources', 'manufacturing-production'],
+  'Sales & Marketing':    ['marketing-sales', 'fmcg-retail-wholesale', 'customer-service-bpo'],
+  'Education':            ['education-training'],
+  'Construction':         ['construction-built-environment', 'architecture-planning'],
+  'Hospitality':          ['hospitality-tourism-events'],
+  'Legal':                ['legal-compliance'],
+  'Government':           ['government-public-sector', 'ngo-non-profit'],
+  'Creative & Design':    ['creative-media-advertising'],
+  'Logistics':            ['logistics-transport-supply-chain', 'automotive'],
+};
 
 const industries = [
   { name: 'IT & Tech', icon: Code },
@@ -38,10 +54,12 @@ export default function Homepage() {
   const [stats, setStats] = useState({ activeJobs: 0, seekers: 0, companies: 0 });
   const [featuredJobs, setFeaturedJobs] = useState<any[]>([]);
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set());
+  const [industryCounts, setIndustryCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadStats();
     loadFeaturedJobs();
+    loadIndustryCounts();
   }, []);
 
   async function loadStats() {
@@ -60,6 +78,22 @@ export default function Homepage() {
     } catch (error) {
       console.error('Error loading featured jobs:', error);
     }
+  }
+
+  async function loadIndustryCounts() {
+    try {
+      const { data } = await supabase
+        .from('jobs')
+        .select('industry')
+        .eq('status', 'active')
+        .eq('is_visible', true);
+      if (!data) return;
+      const counts: Record<string, number> = {};
+      for (const [category, dbValues] of Object.entries(INDUSTRY_MAP)) {
+        counts[category] = data.filter(j => dbValues.includes(j.industry)).length;
+      }
+      setIndustryCounts(counts);
+    } catch {}
   }
 
   const handleSearch = () => {
@@ -195,17 +229,19 @@ export default function Homepage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
             {industries.map((industry) => {
               const Icon = industry.icon;
+              const count = industryCounts[industry.name] ?? 0;
+              const dbValues = INDUSTRY_MAP[industry.name] ?? [];
               return (
                 <button
                   key={industry.name}
                   onClick={() => {
-                    setSearchIndustry(industry.name);
-                    navigate(`/jobs?industry=${encodeURIComponent(industry.name)}`);
+                    navigate(`/jobs?industry=${encodeURIComponent(dbValues.join(','))}&industryLabel=${encodeURIComponent(industry.name)}`);
                   }}
                   className="bg-white p-6 rounded-[var(--rf-radius-lg)] shadow-[var(--rf-card-shadow)] hover:shadow-lg transition-all hover:scale-105 flex flex-col items-center text-center group"
                 >
                   <Icon className="w-8 h-8 text-[var(--rf-green)] mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium text-[var(--rf-text)]">{industry.name}</span>
+                  <span className="mt-1 text-xs text-gray-400">{count} {count === 1 ? 'job' : 'jobs'}</span>
                 </button>
               );
             })}
