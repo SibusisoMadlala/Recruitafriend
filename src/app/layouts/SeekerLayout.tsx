@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth';
 import { calculateProfileCompletion } from '../lib/profileCompletion';
 import {
   LayoutDashboard, User, FileText, Briefcase, ClipboardList,
-  Video, Users, LogOut, Loader2, Heart, Edit3, Menu, X, BookOpen, Bell
+  Video, Users, LogOut, Loader2, Heart, Edit3, Menu, X, BookOpen, Bell, PenSquare
 } from 'lucide-react';
 
 export default function SeekerLayout() {
@@ -17,6 +17,7 @@ export default function SeekerLayout() {
       { icon: LayoutDashboard, label: 'Dashboard', path: '/seeker/dashboard' },
       { icon: User, label: 'My Profile', path: '/seeker/profile' },
       { icon: FileText, label: 'My CV', path: '/seeker/cv' },
+      { icon: PenSquare, label: 'CV Builder', path: '/seeker/cv-builder' },
       { icon: Heart, label: 'Saved Jobs', path: '/seeker/saved' },
       { icon: ClipboardList, label: 'My Applications', path: '/seeker/applications' },
       { icon: Video, label: 'Video Interviews', path: '/seeker/interviews' },
