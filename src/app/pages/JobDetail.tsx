@@ -338,11 +338,11 @@ export default function JobDetail() {
     ? employerSocial.employer
     : {};
 
-  const hideCompanyName = Boolean(employerMeta.hideCompanyName);
+  const hideCompanyName = Boolean(employerMeta.hideCompanyName) || Boolean(job.hide_company);
   const hideWebsite = Boolean(employerMeta.hideWebsite);
 
   const companyName = hideCompanyName
-    ? 'RecruitFriend'
+    ? 'Confidential'
     : String(
         employer.name
           || employerSocial.company_name
