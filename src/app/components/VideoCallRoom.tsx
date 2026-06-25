@@ -3,8 +3,7 @@ import {
   X, Video, VideoOff, Mic, MicOff, Monitor, MonitorOff,
   MessageSquare, Users, Maximize2, Minimize2, Send, PhoneOff,
   Wifi, WifiOff, Copy, Check, UserPlus, Loader2,
-  Circle, Square, FileText, Save, Sparkles, Download, Mail,
-  ChevronRight,
+  Circle, Square, FileText, Save,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
@@ -12,26 +11,6 @@ import { toast } from 'sonner';
 
 interface ChatMsg { from: string; text: string; ts: number; }
 
-type TranscriptEntry = { speaker: string; text: string; ts: number };
-type AiNotes = {
-  id?: string;
-  summary: string;
-  key_points: string[];
-  skills: string[];
-  qualifications: string[];
-  experience: string[];
-  strengths: string[];
-  concerns: string[];
-  action_items: string[];
-  recommendation: string;
-  salary_expectations: string;
-  availability: string;
-  score_communication: number;
-  score_technical: number;
-  score_experience_relevance: number;
-  score_confidence: number;
-  score_overall: number;
-};
 
 type PeerInfo = {
   id: string; name: string; pc: RTCPeerConnection;
@@ -54,7 +33,7 @@ interface Props {
   onClose: () => void;
 }
 
-const MAX_PEERS = 3;
+const MAX_PEERS = 9;
 
 export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, guestName, onClose }: Props) {
   const { profile, user } = useAuth();
@@ -88,10 +67,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   ]);
   const myNameRef          = useRef(myName);
   myNameRef.current        = myName;
-  const transcriptRef      = useRef<TranscriptEntry[]>([]);
-  const transcribingRef    = useRef(false);
-  const speechRef          = useRef<any>(null);
-  const transcriptEndRef   = useRef<HTMLDivElement>(null);
 
   const [status, setStatus]             = useState<'starting'|'waiting'|'connected'|'reconnecting'|'error'>('starting');
   const [errorMsg, setErrorMsg]         = useState('');
@@ -100,7 +75,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [camOn, setCamOn]               = useState(true);
   const [screenOn, setScreenOn]         = useState(false);
   const [handRaised, setHandRaised]     = useState(false);
-  const [panel, setPanel]               = useState<'none'|'chat'|'people'|'notes'|'ai-notes'>('none');
+  const [panel, setPanel]               = useState<'none'|'chat'|'people'|'notes'>('none');
   const panelRef = useRef(panel);
   panelRef.current = panel;
   const [fullscreen, setFullscreen]     = useState(false);
@@ -126,13 +101,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [notes, setNotes]               = useState('');
   const [notesSaved, setNotesSaved]     = useState(false);
 
-  // ─── AI Interview Notes ──────────────────────────────────────────────────
-  const [transcript, setTranscript]             = useState<TranscriptEntry[]>([]);
-  const [aiConsentState, setAiConsentState]     = useState<'idle'|'host-confirming'|'pending'|'peer-requested'|'peer-accepted'|'active'>('idle');
-  const [pendingPeerConsents, setPendingPeerConsents] = useState<Set<string>>(new Set());
-  const [aiNotes, setAiNotes]                   = useState<AiNotes | null>(null);
-  const [aiGenerating, setAiGenerating]         = useState(false);
-  const [aiNoteCopied, setAiNoteCopied]         = useState(false);
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
 
@@ -215,62 +183,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     setNotesSaved(false);
   }, [notes, applicationId]);
 
-  // ─── Live transcription via Web Speech API ───────────────────────────────
-  useEffect(() => {
-    if (aiConsentState !== 'active') return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      toast.error('Speech recognition not supported — use Chrome or Edge for AI Notes.');
-      return;
-    }
-    if (transcribingRef.current) return;
-    transcribingRef.current = true;
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = 'en-ZA';
-    rec.onresult = (e: any) => {
-      const last = e.results[e.results.length - 1];
-      if (!last?.isFinal) return;
-      const text = (last[0]?.transcript || '').trim();
-      if (!text) return;
-      const entry: TranscriptEntry = { speaker: myNameRef.current, text, ts: Date.now() };
-      transcriptRef.current = [...transcriptRef.current, entry];
-      setTranscript(t => [...t, entry]);
-      channelRef.current?.send({ type: 'broadcast', event: 'rftranscript', payload: entry });
-    };
-    rec.onerror = (e: any) => {
-      if (e.error === 'not-allowed') {
-        toast.error('Mic permission denied for AI transcription.');
-        transcribingRef.current = false;
-      }
-    };
-    rec.onend = () => {
-      if (!transcribingRef.current) return;
-      // Delay restart to avoid rapid cycling that causes repeated browser chimes
-      setTimeout(() => { if (transcribingRef.current) try { rec.start(); } catch {} }, 300);
-    };
-    try { rec.start(); } catch {}
-    speechRef.current = rec;
-
-    // Re-play any remote audio elements that may have been interrupted by SpeechRecognition
-    setTimeout(() => {
-      document.querySelectorAll<HTMLAudioElement>('audio').forEach(a => {
-        if (a.paused) a.play().catch(() => {});
-      });
-    }, 500);
-
-    return () => {
-      transcribingRef.current = false;
-      try { speechRef.current?.stop(); } catch {}
-      speechRef.current = null;
-    };
-  }, [aiConsentState]);
-
-  // Auto-scroll transcript panel
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript]);
 
   // ─── Re-announce while waiting/reconnecting (handles missed initial rfhello) ─
   useEffect(() => {
@@ -466,7 +378,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           heardFrom.current.delete(peerId);
           setRenderPeers(prev => prev.filter(p => p.id !== peerId));
         }
-        if (peersRef.current.size >= MAX_PEERS) { toast.error('This call is full (max 4 people).'); return; }
+        if (peersRef.current.size >= MAX_PEERS) { toast.error('This call is full (max 10 people).'); return; }
         offeredTo.current.add(peerId);
         const info = initPeer(peerId, peerName);
         try {
@@ -605,47 +517,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         setRenderPeers(prev => prev.map(p => p.id === from ? { ...p, handRaised: raised } : p));
       });
 
-      // ── AI Consent & Transcript ──────────────────────────────────────────
-      ch.on('broadcast', { event: 'rfconsent-request' }, () => {
-        if (!alive || isHost) return;
-        setAiConsentState('peer-requested');
-      });
-
-      ch.on('broadcast', { event: 'rfconsent-accept' }, ({ payload }) => {
-        if (!alive || !isHost) return;
-        const { from } = payload as { from: string; name: string };
-        setPendingPeerConsents(prev => {
-          const next = new Set(prev);
-          next.delete(from);
-          if (next.size === 0) {
-            channelRef.current?.send({ type: 'broadcast', event: 'rfconsent-start', payload: {} });
-            setAiConsentState('active');
-          }
-          return next;
-        });
-      });
-
-      ch.on('broadcast', { event: 'rfconsent-reject' }, ({ payload }) => {
-        if (!alive) return;
-        const { name } = payload as { from: string; name: string };
-        if (isHost) {
-          toast.error(`${name || 'A participant'} declined AI transcription.`);
-          setPendingPeerConsents(new Set());
-          setAiConsentState('idle');
-        }
-      });
-
-      ch.on('broadcast', { event: 'rfconsent-start' }, () => {
-        if (!alive) return;
-        setAiConsentState('active');
-      });
-
-      ch.on('broadcast', { event: 'rftranscript' }, ({ payload }) => {
-        if (!alive) return;
-        const entry = payload as TranscriptEntry;
-        transcriptRef.current = [...transcriptRef.current, entry];
-        setTranscript(t => [...t, entry]);
-      });
 
       ch.subscribe((s) => {
         if (s !== 'SUBSCRIBED' || !alive) return;
@@ -816,54 +687,81 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   }, []);
 
   function startRecording() {
-    const remotePeer = Array.from(peersRef.current.values())[0];
-    if (!remotePeer) { toast.error('No one else is in the call yet.'); return; }
+    if (peersRef.current.size === 0) { toast.error('No one else is in the call yet.'); return; }
     try {
-      // ── Canvas composite: split-screen local (left) + remote (right) ──
       const canvas = document.createElement('canvas');
       canvas.width = 1280;
       canvas.height = 720;
       const drawCtx = canvas.getContext('2d')!;
 
+      function getGrid(n: number): { cols: number; rows: number } {
+        if (n <= 1) return { cols: 1, rows: 1 };
+        if (n <= 2) return { cols: 2, rows: 1 };
+        if (n <= 4) return { cols: 2, rows: 2 };
+        if (n <= 6) return { cols: 3, rows: 2 };
+        if (n <= 9) return { cols: 3, rows: 3 };
+        return { cols: 4, rows: 3 };
+      }
+
       function drawFrame() {
-        const localEl  = localRef.current;
-        const remoteEl = peerVideoRefs.current.get(remotePeer.id);
+        const currentPeers = Array.from(peersRef.current.values());
+        const tiles = [
+          { el: localRef.current, name: myNameRef.current + ' (You)', isLocal: true },
+          ...currentPeers.map(p => ({ el: peerVideoRefs.current.get(p.id) ?? null, name: p.name, isLocal: false })),
+        ];
+        const { cols, rows } = getGrid(tiles.length);
+        const cellW = 1280 / cols;
+        const cellH = 720 / rows;
+
         drawCtx.fillStyle = '#111';
         drawCtx.fillRect(0, 0, 1280, 720);
-        // Left half — local camera (un-mirror so it looks natural in recording)
-        if (localEl && localEl.readyState >= 2) {
-          drawCtx.save();
-          drawCtx.translate(640, 0);
-          drawCtx.scale(-1, 1);
-          drawCtx.drawImage(localEl, 0, 0, 640, 720);
-          drawCtx.restore();
-        }
-        // Right half — remote
-        if (remoteEl && remoteEl.readyState >= 2) {
-          drawCtx.drawImage(remoteEl, 640, 0, 640, 720);
-        }
-        // Name labels
-        drawCtx.fillStyle = 'rgba(0,0,0,0.55)';
-        drawCtx.fillRect(0, 678, 200, 42);
-        drawCtx.fillRect(640, 678, 200, 42);
-        drawCtx.fillStyle = '#fff';
-        drawCtx.font = 'bold 15px sans-serif';
-        drawCtx.fillText('You', 10, 705);
-        drawCtx.fillText(remotePeer.name || 'Candidate', 650, 705);
+
+        tiles.forEach((tile, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = col * cellW;
+          const y = row * cellH;
+
+          if (tile.el && tile.el.readyState >= 2) {
+            if (tile.isLocal) {
+              drawCtx.save();
+              drawCtx.translate(x + cellW, y);
+              drawCtx.scale(-1, 1);
+              drawCtx.drawImage(tile.el, 0, 0, cellW, cellH);
+              drawCtx.restore();
+            } else {
+              drawCtx.drawImage(tile.el, x, y, cellW, cellH);
+            }
+          } else {
+            drawCtx.fillStyle = '#222';
+            drawCtx.fillRect(x, y, cellW, cellH);
+          }
+
+          // Name label
+          const fontSize = Math.max(11, Math.min(14, cellW / 15));
+          drawCtx.fillStyle = 'rgba(0,0,0,0.55)';
+          drawCtx.fillRect(x, y + cellH - 28, Math.min(180, cellW), 28);
+          drawCtx.fillStyle = '#fff';
+          drawCtx.font = `bold ${fontSize}px sans-serif`;
+          drawCtx.fillText(tile.name, x + 8, y + cellH - 9);
+        });
+
         rafIdRef.current = requestAnimationFrame(drawFrame);
       }
       drawFrame();
 
-      // ── Mixed audio ──
+      // ── Mixed audio from all participants ──
       const audioCtx = new AudioContext();
       audioCtxRef.current = audioCtx;
       const dest = audioCtx.createMediaStreamDestination();
       streamRef.current?.getAudioTracks().forEach(t =>
         audioCtx.createMediaStreamSource(new MediaStream([t])).connect(dest)
       );
-      remotePeer.stream.getAudioTracks().forEach(t =>
-        audioCtx.createMediaStreamSource(new MediaStream([t])).connect(dest)
-      );
+      Array.from(peersRef.current.values()).forEach(peer => {
+        peer.stream.getAudioTracks().forEach(t =>
+          audioCtx.createMediaStreamSource(new MediaStream([t])).connect(dest)
+        );
+      });
 
       const canvasStream = canvas.captureStream(25);
       const combined = new MediaStream([
@@ -1024,248 +922,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     setAudioBlocked(false);
   }
 
-  // ─── AI Notes: consent ────────────────────────────────────────────────────
-  function initiateAiConsent() {
-    const peers = renderPeers.filter(p => p.connected);
-    if (peers.length === 0) {
-      setAiConsentState('active');
-      return;
-    }
-    setPendingPeerConsents(new Set(peers.map(p => p.id)));
-    channelRef.current?.send({ type: 'broadcast', event: 'rfconsent-request', payload: { from: myPeerId.current } });
-    setAiConsentState('pending');
-  }
-
-  function acceptAiConsent() {
-    if (isHost) {
-      initiateAiConsent();
-    } else {
-      channelRef.current?.send({ type: 'broadcast', event: 'rfconsent-accept', payload: { from: myPeerId.current, name: myNameRef.current } });
-      setAiConsentState('peer-accepted');
-    }
-  }
-
-  function rejectAiConsent() {
-    channelRef.current?.send({ type: 'broadcast', event: 'rfconsent-reject', payload: { from: myPeerId.current, name: myNameRef.current } });
-    setAiConsentState('idle');
-  }
-
-  function forceStartAi() {
-    channelRef.current?.send({ type: 'broadcast', event: 'rfconsent-start', payload: {} });
-    setAiConsentState('active');
-    setPendingPeerConsents(new Set());
-  }
-
-  // ─── AI Notes: generate ───────────────────────────────────────────────────
-  async function generateAiNotes() {
-    const entries = transcriptRef.current;
-    if (entries.length === 0) {
-      toast.error('No transcript yet — speak during the call first.');
-      return;
-    }
-    setAiGenerating(true);
-    try {
-      const transcriptText = entries
-        .map(e => `[${new Date(e.ts).toLocaleTimeString()}] ${e.speaker}: ${e.text}`)
-        .join('\n');
-      const { data, error } = await supabase.functions.invoke('generate-interview-notes', {
-        body: {
-          transcript: transcriptText,
-          candidateName: candidateName || 'Candidate',
-          jobTitle: jobTitle || 'Position',
-          applicationId,
-          interviewDate: new Date().toISOString().split('T')[0],
-        },
-      });
-      if (error) throw new Error(error.message);
-      setAiNotes(data.notes);
-      toast.success('AI interview notes generated!');
-    } catch (err: any) {
-      toast.error('Failed to generate AI notes: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setAiGenerating(false);
-    }
-  }
-
-  function buildNotesText(n: AiNotes) {
-    const arr = (label: string, items: string[]) =>
-      items.length ? `\n${label}\n${items.map(i => `• ${i}`).join('\n')}` : '';
-    return [
-      `AI INTERVIEW NOTES`,
-      `==================`,
-      `Candidate: ${candidateName || 'N/A'}`,
-      `Position:  ${jobTitle || 'N/A'}`,
-      `Date:      ${new Date().toLocaleDateString('en-ZA')}`,
-      `\nSUMMARY\n${n.summary}`,
-      arr('KEY POINTS', n.key_points),
-      arr('SKILLS IDENTIFIED', n.skills),
-      arr('QUALIFICATIONS', n.qualifications),
-      arr('EXPERIENCE', n.experience),
-      arr('STRENGTHS', n.strengths),
-      arr('CONCERNS', n.concerns),
-      arr('ACTION ITEMS', n.action_items),
-      `\nRECOMMENDATION\n${n.recommendation}`,
-      n.salary_expectations !== 'Not discussed' ? `\nSALARY EXPECTATIONS\n${n.salary_expectations}` : '',
-      n.availability !== 'Not discussed' ? `\nAVAILABILITY\n${n.availability}` : '',
-      `\nAI SCORES`,
-      `Communication:        ${n.score_communication}/100`,
-      `Technical Knowledge:  ${n.score_technical}/100`,
-      `Experience Relevance: ${n.score_experience_relevance}/100`,
-      `Confidence:           ${n.score_confidence}/100`,
-      `Overall Suitability:  ${n.score_overall}/100`,
-    ].join('\n');
-  }
-
-  function copyAiNotes() {
-    if (!aiNotes) return;
-    navigator.clipboard.writeText(buildNotesText(aiNotes)).then(() => {
-      setAiNoteCopied(true);
-      toast.success('Notes copied!');
-      setTimeout(() => setAiNoteCopied(false), 2500);
-    });
-  }
-
-  function printAiNotes() {
-    if (!aiNotes) return;
-    const bar = (v: number) =>
-      `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
-        <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px">
-          <div style="width:${v}%;height:100%;background:#1d4ed8;border-radius:4px"></div>
-        </div>
-        <span style="font-size:12px;font-weight:700;color:#1d4ed8;min-width:44px">${v}/100</span>
-      </div>`;
-    const ul = (items: string[]) => items.length
-      ? `<ul style="margin:6px 0 0;padding-left:18px">${items.map(i => `<li style="margin:3px 0">${i}</li>`).join('')}</ul>`
-      : `<p style="color:#9ca3af;font-style:italic;margin:4px 0;font-size:13px">None identified</p>`;
-    const sec = (title: string, body: string) =>
-      `<div style="margin-bottom:18px">
-        <h3 style="font-size:13px;font-weight:700;color:#1d4ed8;border-bottom:2px solid #dbeafe;padding-bottom:4px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em">${title}</h3>
-        ${body}
-      </div>`;
-    const w = window.open('', '_blank', 'width=820,height=1000');
-    if (!w) { toast.error('Allow pop-ups to download PDF.'); return; }
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-      <title>Interview Notes — ${aiNotes.candidate_name ?? candidateName}</title>
-      <style>
-        body{font-family:Arial,sans-serif;color:#111;margin:0;padding:32px;font-size:13px;line-height:1.6}
-        h1{color:#1d4ed8;font-size:20px;margin:0 0 4px}
-        p{margin:3px 0}
-        @media print{.noprint{display:none}body{padding:20px}}
-      </style></head><body>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;border-bottom:3px solid #1d4ed8;padding-bottom:16px">
-        <div>
-          <h1>AI Interview Notes</h1>
-          <p style="color:#6b7280;font-size:12px;margin:0">Generated by RecruitFriend AI · Confidential</p>
-        </div>
-        <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700">⬇ Save as PDF</button>
-      </div>
-      <div style="background:#eff6ff;border-left:4px solid #1d4ed8;padding:12px 16px;margin-bottom:24px;border-radius:0 8px 8px 0">
-        <p><strong>Candidate:</strong> ${candidateName || 'N/A'}</p>
-        <p><strong>Position:</strong> ${jobTitle || 'N/A'}</p>
-        <p><strong>Interview Date:</strong> ${new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-      </div>
-      ${sec('Summary', `<p style="line-height:1.8">${aiNotes.summary}</p>`)}
-      ${aiNotes.skills.length ? sec('Skills Identified', ul(aiNotes.skills)) : ''}
-      ${aiNotes.qualifications.length ? sec('Qualifications', ul(aiNotes.qualifications)) : ''}
-      ${aiNotes.experience.length ? sec('Experience', ul(aiNotes.experience)) : ''}
-      ${aiNotes.strengths.length ? sec('Strengths', ul(aiNotes.strengths)) : ''}
-      ${aiNotes.concerns.length ? sec('Concerns', ul(aiNotes.concerns)) : ''}
-      ${aiNotes.action_items.length ? sec('Action Items', ul(aiNotes.action_items)) : ''}
-      ${sec('Recommendation', `<p>${aiNotes.recommendation}</p>`)}
-      ${aiNotes.salary_expectations !== 'Not discussed' ? sec('Salary Expectations', `<p>${aiNotes.salary_expectations}</p>`) : ''}
-      ${aiNotes.availability !== 'Not discussed' ? sec('Availability', `<p>${aiNotes.availability}</p>`) : ''}
-      <div style="margin-bottom:20px">
-        <h3 style="font-size:13px;font-weight:700;color:#1d4ed8;border-bottom:2px solid #dbeafe;padding-bottom:4px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em">AI Candidate Scores</h3>
-        <p style="margin:8px 0 2px"><strong>Communication</strong></p>${bar(aiNotes.score_communication)}
-        <p style="margin:8px 0 2px"><strong>Technical Knowledge</strong></p>${bar(aiNotes.score_technical)}
-        <p style="margin:8px 0 2px"><strong>Experience Relevance</strong></p>${bar(aiNotes.score_experience_relevance)}
-        <p style="margin:8px 0 2px"><strong>Confidence</strong></p>${bar(aiNotes.score_confidence)}
-        <p style="margin:8px 0 2px"><strong>Overall Suitability</strong></p>${bar(aiNotes.score_overall)}
-      </div>
-    </body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 400);
-  }
-
-  function emailAiNotes() {
-    if (!aiNotes) return;
-    const sub = encodeURIComponent(`Interview Notes — ${candidateName || 'Candidate'} — ${jobTitle || 'Position'}`);
-    const body = encodeURIComponent(buildNotesText(aiNotes));
-    window.open(`mailto:?subject=${sub}&body=${body}`);
-  }
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0d1117', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* ── AI Consent Modal: host confirms before sending request ── */}
-      {aiConsentState === 'host-confirming' && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 24, maxWidth: 380, width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <Sparkles size={20} color="#60a5fa" />
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Start AI Interview Notes?</span>
-            </div>
-            <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-              <p style={{ margin: 0, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
-                "This call may be transcribed and summarised by AI for recruitment and interview purposes."
-              </p>
-            </div>
-            <p style={{ margin: '0 0 18px', color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 1.6 }}>
-              All participants will be asked to accept before transcription begins. No recording is made without consent.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={acceptAiConsent}
-                style={{ flex: 1, background: '#1d4ed8', border: 'none', color: '#fff', borderRadius: 8, padding: '11px 12px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
-              >
-                Accept &amp; Notify Participants
-              </button>
-              <button
-                onClick={() => setAiConsentState('idle')}
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: 8, padding: '11px 16px', cursor: 'pointer', fontSize: 14 }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── AI Consent Modal: peer receives request ── */}
-      {aiConsentState === 'peer-requested' && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 24, maxWidth: 380, width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <Sparkles size={20} color="#60a5fa" />
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>AI Transcription Request</span>
-            </div>
-            <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-              <p style={{ margin: 0, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
-                "This call may be transcribed and summarised by AI for recruitment and interview purposes."
-              </p>
-            </div>
-            <p style={{ margin: '0 0 18px', color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 1.6 }}>
-              The interviewer has requested to use AI to transcribe this call and generate interview notes. Do you consent?
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={acceptAiConsent}
-                style={{ flex: 1, background: '#1d4ed8', border: 'none', color: '#fff', borderRadius: 8, padding: '11px 12px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
-              >
-                Accept
-              </button>
-              <button
-                onClick={rejectAiConsent}
-                style={{ background: '#dc2626', border: 'none', color: '#fff', borderRadius: 8, padding: '11px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
-              >
-                Decline
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#0A2540', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, gap: 8 }}>
@@ -1428,7 +1089,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           <div style={{ width: 280, background: '#1a1f2e', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <span style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>
-                {panel === 'chat' ? 'Chat' : panel === 'notes' ? 'Meeting Notes' : panel === 'ai-notes' ? 'AI Interview Notes' : 'Participants'}
+                {panel === 'chat' ? 'Chat' : panel === 'notes' ? 'Meeting Notes' : 'Participants'}
               </span>
               <button onClick={() => setPanel('none')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
@@ -1545,225 +1206,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               </div>
             )}
 
-            {/* AI Interview Notes panel */}
-            {panel === 'ai-notes' && (
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                {/* ── Idle / start prompt ── */}
-                {aiConsentState === 'idle' && (
-                  <div style={{ padding: 16 }}>
-                    <div style={{ background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.25)', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Sparkles size={16} color="#60a5fa" />
-                        <span style={{ color: '#60a5fa', fontWeight: 700, fontSize: 13 }}>AI Interview Notes</span>
-                      </div>
-                      <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, margin: 0, lineHeight: 1.6 }}>
-                        AI will listen to the conversation, generate a transcript, and produce professional interview notes including skills, scores, and a recommendation.
-                      </p>
-                    </div>
-                    <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-                      <p style={{ color: '#fbbf24', fontSize: 11, margin: 0, lineHeight: 1.6, fontWeight: 500 }}>
-                        ⚠ Consent notice: "This call may be transcribed and summarised by AI for recruitment and interview purposes." Both participants must accept before transcription begins.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setAiConsentState('host-confirming')}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1d4ed8', border: 'none', color: '#fff', borderRadius: 8, padding: '11px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
-                    >
-                      <Sparkles size={15} />
-                      Start AI Transcription
-                    </button>
-                  </div>
-                )}
-
-                {/* ── Host confirming ── */}
-                {aiConsentState === 'host-confirming' && (
-                  <div style={{ padding: 16 }}>
-                    <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 0, lineHeight: 1.6 }}>
-                      By starting, you confirm that all participants will be notified and asked to consent.
-                    </p>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button onClick={acceptAiConsent} style={{ flex: 1, background: '#1d4ed8', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Confirm</button>
-                      <button onClick={() => setAiConsentState('idle')} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: 8, padding: '9px 8px', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Pending peer acceptance ── */}
-                {aiConsentState === 'pending' && (
-                  <div style={{ padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                      <Loader2 size={16} color="#60a5fa" style={{ animation: 'rfSpin 1s linear infinite' }} />
-                      <span style={{ color: '#60a5fa', fontSize: 13, fontWeight: 600 }}>Waiting for participants…</span>
-                    </div>
-                    {Array.from(pendingPeerConsents).map(pid => {
-                      const peer = renderPeers.find(p => p.id === pid);
-                      return (
-                        <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
-                          {peer?.name || 'Participant'} — pending consent
-                        </div>
-                      );
-                    })}
-                    <button onClick={forceStartAi} style={{ width: '100%', marginTop: 14, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 12 }}>
-                      Start anyway
-                    </button>
-                  </div>
-                )}
-
-                {/* ── Peer accepted, waiting for host start ── */}
-                {aiConsentState === 'peer-accepted' && (
-                  <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Loader2 size={16} color="#60a5fa" style={{ animation: 'rfSpin 1s linear infinite' }} />
-                    <span style={{ color: '#60a5fa', fontSize: 13 }}>Consent accepted — waiting for host to start…</span>
-                  </div>
-                )}
-
-                {/* ── Active: live transcript ── */}
-                {aiConsentState === 'active' && !aiNotes && (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'rfSpin 1s ease-in-out infinite alternate' }} />
-                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Recording transcript…</span>
-                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{transcript.length} lines</span>
-                      <button
-                        onClick={() => {
-                          transcribingRef.current = false;
-                          try { speechRef.current?.stop(); } catch {}
-                          speechRef.current = null;
-                          setAiConsentState('idle');
-                        }}
-                        style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Stop
-                      </button>
-                    </div>
-                    <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
-                      {transcript.length === 0 && (
-                        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, textAlign: 'center', marginTop: 20 }}>
-                          Speak to see transcript appear here…
-                        </p>
-                      )}
-                      {transcript.map((e, i) => (
-                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <span style={{ color: '#60a5fa', fontSize: 10, fontWeight: 600 }}>
-                            {e.speaker} · {new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 1.5 }}>{e.text}</span>
-                        </div>
-                      ))}
-                      <div ref={transcriptEndRef} />
-                    </div>
-                    <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                      <button
-                        onClick={generateAiNotes}
-                        disabled={aiGenerating || transcript.length === 0}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: aiGenerating ? 'rgba(99,179,237,0.3)' : '#1d4ed8', border: 'none', color: '#fff', borderRadius: 8, padding: '11px 12px', cursor: aiGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, opacity: transcript.length === 0 ? 0.5 : 1 }}
-                      >
-                        {aiGenerating ? <Loader2 size={15} style={{ animation: 'rfSpin 1s linear infinite' }} /> : <Sparkles size={15} />}
-                        {aiGenerating ? 'Generating…' : 'Generate AI Notes'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── AI Notes result ── */}
-                {aiNotes && (() => {
-                  const ScoreBar = ({ label, value }: { label: string; value: number }) => (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>{label}</span>
-                        <span style={{ color: '#60a5fa', fontSize: 11, fontWeight: 700 }}>{value}/100</span>
-                      </div>
-                      <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3 }}>
-                        <div style={{ height: '100%', width: `${value}%`, background: value >= 80 ? '#22c55e' : value >= 60 ? '#60a5fa' : '#f59e0b', borderRadius: 3, transition: 'width 0.8s ease' }} />
-                      </div>
-                    </div>
-                  );
-                  const Section = ({ title, items }: { title: string; items: string[] }) => items.length === 0 ? null : (
-                    <div style={{ marginBottom: 14 }}>
-                      <p style={{ margin: '0 0 6px', color: '#60a5fa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</p>
-                      {items.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, alignItems: 'flex-start' }}>
-                          <ChevronRight size={11} color="#60a5fa" style={{ flexShrink: 0, marginTop: 2 }} />
-                          <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, lineHeight: 1.5 }}>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                  return (
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                      {/* Export actions */}
-                      <div style={{ display: 'flex', gap: 6, padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                        <button onClick={printAiNotes} title="Download PDF" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#1d4ed8', border: 'none', color: '#fff', borderRadius: 7, padding: '7px 6px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
-                          <Download size={12} /> PDF
-                        </button>
-                        <button onClick={copyAiNotes} title="Copy notes" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: aiNoteCopied ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)', border: `1px solid ${aiNoteCopied ? '#22c55e' : 'rgba(255,255,255,0.15)'}`, color: aiNoteCopied ? '#22c55e' : '#fff', borderRadius: 7, padding: '7px 6px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
-                          {aiNoteCopied ? <Check size={12} /> : <Copy size={12} />} {aiNoteCopied ? 'Copied' : 'Copy'}
-                        </button>
-                        <button onClick={emailAiNotes} title="Email notes" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: 7, padding: '7px 6px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
-                          <Mail size={12} /> Email
-                        </button>
-                        <button onClick={generateAiNotes} disabled={aiGenerating} title="Regenerate" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: 7, padding: '7px 6px', cursor: 'pointer', fontSize: 11 }}>
-                          {aiGenerating ? <Loader2 size={11} style={{ animation: 'rfSpin 1s linear infinite' }} /> : <Sparkles size={11} />} Redo
-                        </button>
-                      </div>
-
-                      <div style={{ padding: '14px 16px' }}>
-                        {/* Header */}
-                        <div style={{ background: 'rgba(29,78,216,0.15)', border: '1px solid rgba(29,78,216,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-                          <p style={{ margin: '0 0 2px', color: '#fff', fontWeight: 700, fontSize: 13 }}>{candidateName || 'Candidate'}</p>
-                          <p style={{ margin: '0 0 2px', color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>{jobTitle || 'Position'}</p>
-                          <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>{new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                        </div>
-
-                        {/* Summary */}
-                        <div style={{ marginBottom: 16 }}>
-                          <p style={{ margin: '0 0 6px', color: '#60a5fa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</p>
-                          <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)', fontSize: 12, lineHeight: 1.7 }}>{aiNotes.summary}</p>
-                        </div>
-
-                        <Section title="Skills Identified" items={aiNotes.skills} />
-                        <Section title="Qualifications" items={aiNotes.qualifications} />
-                        <Section title="Experience" items={aiNotes.experience} />
-                        <Section title="Strengths" items={aiNotes.strengths} />
-                        <Section title="Concerns" items={aiNotes.concerns} />
-                        <Section title="Action Items" items={aiNotes.action_items} />
-
-                        {/* Recommendation */}
-                        <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-                          <p style={{ margin: '0 0 4px', color: '#22c55e', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recommendation</p>
-                          <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 1.5 }}>{aiNotes.recommendation}</p>
-                        </div>
-
-                        {aiNotes.salary_expectations !== 'Not discussed' && (
-                          <div style={{ marginBottom: 14 }}>
-                            <p style={{ margin: '0 0 4px', color: '#60a5fa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Salary Expectations</p>
-                            <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{aiNotes.salary_expectations}</p>
-                          </div>
-                        )}
-
-                        {aiNotes.availability !== 'Not discussed' && (
-                          <div style={{ marginBottom: 14 }}>
-                            <p style={{ margin: '0 0 4px', color: '#60a5fa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Availability</p>
-                            <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{aiNotes.availability}</p>
-                          </div>
-                        )}
-
-                        {/* AI Scores */}
-                        <div style={{ marginTop: 4 }}>
-                          <p style={{ margin: '0 0 12px', color: '#60a5fa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Candidate Scores</p>
-                          <ScoreBar label="Communication" value={aiNotes.score_communication} />
-                          <ScoreBar label="Technical Knowledge" value={aiNotes.score_technical} />
-                          <ScoreBar label="Experience Relevance" value={aiNotes.score_experience_relevance} />
-                          <ScoreBar label="Confidence" value={aiNotes.score_confidence} />
-                          <ScoreBar label="Overall Suitability" value={aiNotes.score_overall} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
 
             {/* Chat panel */}
             {panel === 'chat' && (
@@ -1858,18 +1300,6 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             <button onClick={() => setPanel(p => p === 'notes' ? 'none' : 'notes')} style={Btn(panel === 'notes')}>
               <FileText size={18} />
               Notes
-            </button>
-          )}
-          {isHost && (
-            <button
-              onClick={() => setPanel(p => p === 'ai-notes' ? 'none' : 'ai-notes')}
-              style={{ ...Btn(panel === 'ai-notes'), background: panel === 'ai-notes' ? '#1d4ed8' : 'rgba(255,255,255,0.15)', position: 'relative' }}
-            >
-              <Sparkles size={18} />
-              AI Notes
-              {aiConsentState === 'active' && (
-                <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />
-              )}
             </button>
           )}
           {isHost && (
