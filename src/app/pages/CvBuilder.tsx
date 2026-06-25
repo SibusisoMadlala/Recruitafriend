@@ -287,25 +287,24 @@ export default function CvBuilder() {
     }
   }
 
-  function printCv() {
+  function downloadCv() {
     const html = buildCvHtml(cv);
-    const w = window.open('', '_blank', 'width=900,height=1100');
-    if (!w) { toast.error('Allow pop-ups to download PDF.'); return; }
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-      <style>@media print{.noprint{display:none}}</style></head><body>
-      <div class="noprint" style="padding:12px 20px;background:#0A2540;display:flex;gap:10px;align-items:center">
-        <button onclick="window.print()" style="background:#00C853;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px">⬇ Save as PDF</button>
-        <span style="color:#fff;font-size:13px">or use your browser's print dialog → Save as PDF</span>
-      </div>
-      <iframe id="cv-frame" style="width:100%;height:calc(100vh - 50px);border:none"></iframe>
-      <script>
-        const frame = document.getElementById('cv-frame');
-        frame.contentDocument.open();
-        frame.contentDocument.write(${JSON.stringify(html)});
-        frame.contentDocument.close();
-      </script>
-      </body></html>`);
-    w.document.close();
+    const fileName = [cv.firstName, cv.lastName].filter(Boolean).join('_') || 'CV';
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fileName}_CV</title>
+      <style>
+        @page { size: A4; margin: 12mm; }
+        body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      </style>
+      </head><body>${html}
+      <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+      </body></html>`;
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const popup = window.open(url, '_blank', 'width=900,height=1100');
+    if (!popup) {
+      toast.error('Allow pop-ups to download your CV as PDF.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
   const AiBtn = ({ onClick, label }: { onClick: () => void; label: string }) => (
@@ -544,7 +543,7 @@ export default function CvBuilder() {
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <button onClick={printCv} className="flex items-center gap-2 px-5 py-2.5 bg-[#0A2540] text-white text-sm font-bold rounded-xl hover:bg-[#0d2f50] transition-colors">
+            <button onClick={downloadCv} className="flex items-center gap-2 px-5 py-2.5 bg-[#0A2540] text-white text-sm font-bold rounded-xl hover:bg-[#0d2f50] transition-colors">
               <Download className="w-4 h-4" /> Download PDF
             </button>
             <button onClick={saveToProfile} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-[#00C853] text-white text-sm font-bold rounded-xl hover:bg-[#00B548] transition-colors disabled:opacity-60">
@@ -572,7 +571,7 @@ export default function CvBuilder() {
             {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             {showPreview ? 'Hide' : 'Preview'}
           </button>
-          <button onClick={printCv} className="flex items-center gap-2 px-4 py-2 bg-[#0A2540] text-white text-sm font-semibold rounded-lg hover:bg-[#0d2f50]">
+          <button onClick={downloadCv} className="flex items-center gap-2 px-4 py-2 bg-[#0A2540] text-white text-sm font-semibold rounded-lg hover:bg-[#0d2f50]">
             <Download className="w-4 h-4" /> Download PDF
           </button>
         </div>
@@ -618,7 +617,7 @@ export default function CvBuilder() {
                   Next <ChevronRight className="w-4 h-4" />
                 </button>
               ) : (
-                <button onClick={printCv} className="flex items-center gap-1.5 px-5 py-2.5 bg-[#00C853] text-white text-sm font-bold rounded-lg hover:bg-[#00B548]">
+                <button onClick={downloadCv} className="flex items-center gap-1.5 px-5 py-2.5 bg-[#00C853] text-white text-sm font-bold rounded-lg hover:bg-[#00B548]">
                   <Download className="w-4 h-4" /> Download PDF
                 </button>
               )}
