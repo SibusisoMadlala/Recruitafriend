@@ -4,9 +4,10 @@ import { useAuth } from '../context/useAuth';
 import { apiCall, supabase } from '../lib/supabase';
 import { resolveHideWebsite } from '../lib/companyDisplay';
 import { toast } from 'sonner';
+import type { CVFile } from '../types';
 import {
   MapPin, DollarSign, Briefcase, Calendar, Clock, Building2,
-  Share2, Flag, CheckCircle, Heart, Loader2, Globe, Paperclip, X
+  Share2, Flag, CheckCircle, Heart, Loader2, Globe, Paperclip, X, Upload, FileText
 } from 'lucide-react';
 
 export default function JobDetail() {
@@ -24,6 +25,10 @@ export default function JobDetail() {
   const [cvFile, setCvFile] = useState<File | null>(null);
   const cvFileInputRef = useRef<HTMLInputElement>(null);
   const [showApplyForm, setShowApplyForm] = useState(false);
+  const [profileCvs, setProfileCvs] = useState<CVFile[]>([]);
+  const [cvSource, setCvSource] = useState<'profile' | 'upload'>('profile');
+  const [selectedProfileCv, setSelectedProfileCv] = useState<CVFile | null>(null);
+  const [loadingProfileCvs, setLoadingProfileCvs] = useState(false);
 
   const toDisplayLabel = (value: unknown, fallback = 'Not specified') => {
     const normalized = String(value || '').trim();
@@ -180,6 +185,39 @@ export default function JobDetail() {
     }
   }
 
+  useEffect(() => {
+    if (!showApplyForm || !isSeeker) return;
+    setLoadingProfileCvs(true);
+    apiCall('/cv/files', { requireAuth: true })
+      .then(({ files }) => {
+        const cvs: CVFile[] = files || [];
+        setProfileCvs(cvs);
+        if (cvs.length > 0) {
+          setCvSource('profile');
+          setSelectedProfileCv(cvs[0]);
+        } else {
+          setCvSource('upload');
+        }
+      })
+      .catch(() => setCvSource('upload'))
+      .finally(() => setLoadingProfileCvs(false));
+  }, [showApplyForm, isSeeker]);
+
+  async function registerProfileCv(applicationId: string) {
+    if (!selectedProfileCv) return;
+    await apiCall(`/applications/${applicationId}/docs`, {
+      requireAuth: true,
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: selectedProfileCv.file_name,
+        fileSize: selectedProfileCv.file_size,
+        mimeType: selectedProfileCv.mime_type || 'application/pdf',
+        storageBucket: selectedProfileCv.storage_bucket || 'seeker-cvs',
+        storagePath: selectedProfileCv.storage_path || '',
+      }),
+    });
+  }
+
   async function uploadCvAndRegister(applicationId: string) {
     if (!cvFile || !user) return;
     const storagePath = `${user.id}/${applicationId}/${cvFile.name}`;
@@ -227,9 +265,10 @@ export default function JobDetail() {
       return;
     }
 
-    if (!cvFile) {
+    const hasCv = cvSource === 'profile' ? !!selectedProfileCv : !!cvFile;
+    if (!hasCv) {
       toast.error('Please attach your CV before applying.');
-      cvFileInputRef.current?.click();
+      if (cvSource === 'upload') cvFileInputRef.current?.click();
       return;
     }
 
@@ -245,8 +284,9 @@ export default function JobDetail() {
           screeningAnswers: screeningPayload,
         }),
       });
-      if (cvFile && result?.application?.id) {
-        await uploadCvAndRegister(result.application.id);
+      if (result?.application?.id) {
+        if (cvSource === 'profile') await registerProfileCv(result.application.id);
+        else if (cvFile) await uploadCvAndRegister(result.application.id);
       }
       toast.success('Application submitted successfully!');
       navigate('/seeker/dashboard');
@@ -279,9 +319,10 @@ export default function JobDetail() {
       return;
     }
 
-    if (!cvFile) {
+    const hasCv = cvSource === 'profile' ? !!selectedProfileCv : !!cvFile;
+    if (!hasCv) {
       toast.error('Please attach your CV before applying.');
-      cvFileInputRef.current?.click();
+      if (cvSource === 'upload') cvFileInputRef.current?.click();
       return;
     }
 
@@ -297,8 +338,9 @@ export default function JobDetail() {
           screeningAnswers: screeningPayload,
         }),
       });
-      if (cvFile && result?.application?.id) {
-        await uploadCvAndRegister(result.application.id);
+      if (result?.application?.id) {
+        if (cvSource === 'profile') await registerProfileCv(result.application.id);
+        else if (cvFile) await uploadCvAndRegister(result.application.id);
       }
       toast.success('Application submitted successfully!');
       navigate('/seeker/dashboard');
@@ -693,38 +735,84 @@ export default function JobDetail() {
                           </div>
                         )}
 
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           <div className="text-xs font-semibold text-[var(--rf-text)]">
                             CV / Resume <span className="text-red-500">*</span>
                           </div>
-                          <input
-                            ref={cvFileInputRef}
-                            type="file"
-                            accept=".pdf,.doc,.docx"
-                            className="hidden"
-                            onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
-                          />
-                          {cvFile ? (
-                            <div className="flex items-center gap-2 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 px-3 py-2 text-sm">
-                              <Paperclip className="w-4 h-4 text-[var(--rf-green)] shrink-0" />
-                              <span className="flex-1 truncate text-[var(--rf-text)]">{cvFile.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => { setCvFile(null); if (cvFileInputRef.current) cvFileInputRef.current.value = ''; }}
-                                className="text-[var(--rf-muted)] hover:text-red-500 transition-colors"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
+                          {loadingProfileCvs ? (
+                            <div className="flex items-center gap-2 text-xs text-[var(--rf-muted)] py-2">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Checking your profile CVs...
                             </div>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => cvFileInputRef.current?.click()}
-                              className="flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border border-dashed border-[var(--rf-border)] px-3 py-2.5 text-sm text-[var(--rf-muted)] hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] transition-colors"
-                            >
-                              <Paperclip className="w-4 h-4 shrink-0" />
-                              Upload CV (PDF, DOC, DOCX — max 10 MB)
-                            </button>
+                            <>
+                              {profileCvs.length > 0 && (
+                                <div className="flex rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] overflow-hidden text-xs font-semibold">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCvSource('profile')}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors ${cvSource === 'profile' ? 'bg-[var(--rf-green)] text-white' : 'bg-gray-50 text-[var(--rf-muted)] hover:bg-gray-100'}`}
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> Use profile CV
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCvSource('upload')}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors ${cvSource === 'upload' ? 'bg-[var(--rf-green)] text-white' : 'bg-gray-50 text-[var(--rf-muted)] hover:bg-gray-100'}`}
+                                  >
+                                    <Upload className="w-3.5 h-3.5" /> Upload new
+                                  </button>
+                                </div>
+                              )}
+
+                              {cvSource === 'profile' && profileCvs.length > 0 ? (
+                                <div className="space-y-1.5">
+                                  {profileCvs.map((cv) => (
+                                    <button
+                                      key={cv.id}
+                                      type="button"
+                                      onClick={() => setSelectedProfileCv(cv)}
+                                      className={`flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border px-3 py-2 text-sm transition-colors text-left ${selectedProfileCv?.id === cv.id ? 'border-[var(--rf-green)] bg-green-50 text-[var(--rf-navy)]' : 'border-[var(--rf-border)] bg-gray-50 text-[var(--rf-text)] hover:border-[var(--rf-green)]'}`}
+                                    >
+                                      <FileText className={`w-4 h-4 shrink-0 ${selectedProfileCv?.id === cv.id ? 'text-[var(--rf-green)]' : 'text-[var(--rf-muted)]'}`} />
+                                      <span className="flex-1 truncate">{cv.file_name}</span>
+                                      {selectedProfileCv?.id === cv.id && <CheckCircle className="w-4 h-4 text-[var(--rf-green)] shrink-0" />}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <>
+                                  <input
+                                    ref={cvFileInputRef}
+                                    type="file"
+                                    accept=".pdf,.doc,.docx"
+                                    className="hidden"
+                                    onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
+                                  />
+                                  {cvFile ? (
+                                    <div className="flex items-center gap-2 rounded-[var(--rf-radius-md)] border border-[var(--rf-border)] bg-gray-50 px-3 py-2 text-sm">
+                                      <Paperclip className="w-4 h-4 text-[var(--rf-green)] shrink-0" />
+                                      <span className="flex-1 truncate text-[var(--rf-text)]">{cvFile.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setCvFile(null); if (cvFileInputRef.current) cvFileInputRef.current.value = ''; }}
+                                        className="text-[var(--rf-muted)] hover:text-red-500 transition-colors"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => cvFileInputRef.current?.click()}
+                                      className="flex items-center gap-2 w-full rounded-[var(--rf-radius-md)] border border-dashed border-[var(--rf-border)] px-3 py-2.5 text-sm text-[var(--rf-muted)] hover:border-[var(--rf-green)] hover:text-[var(--rf-green)] transition-colors"
+                                    >
+                                      <Paperclip className="w-4 h-4 shrink-0" />
+                                      Upload CV (PDF, DOC, DOCX — max 10 MB)
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </>
                           )}
                         </div>
 
