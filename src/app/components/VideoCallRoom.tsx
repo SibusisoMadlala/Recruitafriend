@@ -51,6 +51,10 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       if (src) { el.srcObject = src; el.play().catch(() => {}); }
     }
   }, []);
+  // If the browser ever pauses our local preview (layout switch, tab focus change, etc.) resume immediately
+  const onLocalPause = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
+    e.currentTarget.play().catch(() => {});
+  }, []);
   const streamRef     = useRef<MediaStream | null>(null);
   const screenRef     = useRef<MediaStream | null>(null);
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -1003,7 +1007,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
               {/* Local PIP while waiting */}
               <div style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222' }}>
-                <video ref={localVideoRef} autoPlay muted playsInline style={{ width: 120, height: 160, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                <video ref={localVideoRef} autoPlay muted playsInline onPause={onLocalPause} style={{ width: 120, height: 160, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                 <div style={{ position: 'absolute', bottom: 4, left: 6, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 4 }}>{myName} (You)</div>
               </div>
             </div>
@@ -1017,7 +1021,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                 {/* Spotlighted tile */}
                 <div style={{ position: 'absolute', inset: 0, bottom: otherTiles.length > 0 ? 100 : 0, background: '#111', cursor: 'pointer' }} onClick={() => setSpotlightId(null)}>
                   {spotTile.isLocal ? (
-                    <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                    <video ref={localVideoRef} autoPlay muted playsInline onPause={onLocalPause} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
                     <video ref={el => peerVideoRef(el, spotTile.id, spotTile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
@@ -1032,7 +1036,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                     {otherTiles.map(t => (
                       <div key={t.id} onClick={() => handleTileClick(t.id)} style={{ position: 'relative', flexShrink: 0, width: 72, height: 92, borderRadius: 8, overflow: 'hidden', background: '#222', cursor: 'pointer', border: '2px solid rgba(255,255,255,0.2)' }}>
                         {t.isLocal ? (
-                          <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                          <video ref={localVideoRef} autoPlay muted playsInline onPause={onLocalPause} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                         ) : (
                           <video ref={el => peerVideoRef(el, t.id, t.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         )}
@@ -1054,7 +1058,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               </div>
               {/* Self PIP */}
               <div onClick={() => handleTileClick('local')} style={{ position: 'absolute', bottom: 80, right: 16, borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', background: '#222', cursor: 'pointer' }}>
-                <video ref={localVideoRef} autoPlay muted playsInline style={{ width: 100, height: 140, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                <video ref={localVideoRef} autoPlay muted playsInline onPause={onLocalPause} style={{ width: 100, height: 140, objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                 <div style={{ position: 'absolute', bottom: 4, left: 6, color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 4 }}>{screenOn ? '🖥' : 'You'}</div>
               </div>
             </>
@@ -1072,7 +1076,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
                   }}
                 >
                   {tile.isLocal ? (
-                    <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+                    <video ref={localVideoRef} autoPlay muted playsInline onPause={onLocalPause} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
                   ) : (
                     <video ref={el => peerVideoRef(el, tile.id, tile.stream)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
