@@ -279,7 +279,7 @@ export default function Homepage() {
                   <h3 className="text-lg font-bold text-[var(--rf-navy)] mb-2">{job.title}</h3>
                   <div className="flex flex-wrap items-center gap-2 text-[var(--rf-muted)] text-sm">
                     <Building2 className="w-4 h-4" />
-                    <span>{resolveCompanyName(job?.employer, job?.company || 'Company Name')}</span>
+                    <span>{resolveCompanyName(job?.employer, job?.company || 'Company Name', job?.hide_company)}</span>
                     <CheckCircle className="w-4 h-4 text-[var(--rf-green)]" />
                   </div>
                 </div>

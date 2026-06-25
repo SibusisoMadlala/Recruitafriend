@@ -14,17 +14,17 @@ function getHideFlags(employer: any): { hideCompanyName: boolean; hideWebsite: b
   };
 }
 
-/** Returns the display name for a company, respecting hideCompanyName. */
-export function resolveCompanyName(employer: any, fallback = 'Hiring Company'): string {
+/** Returns the display name for a company, respecting hideCompanyName (employer-level) and hide_company (job-level). */
+export function resolveCompanyName(employer: any, fallback = 'Hiring Company', jobHideCompany = false): string {
   const { hideCompanyName } = getHideFlags(employer);
-  if (hideCompanyName) return 'RecruitFriend';
+  if (hideCompanyName || jobHideCompany) return 'Confidential';
   return String(employer?.name || fallback).trim();
 }
 
-/** Returns the logo URL for a company, respecting hideCompanyName (hides logo too). */
-export function resolveCompanyLogo(employer: any): string {
+/** Returns the logo URL for a company, hiding it when company name is hidden. */
+export function resolveCompanyLogo(employer: any, jobHideCompany = false): string {
   const { hideCompanyName } = getHideFlags(employer);
-  if (hideCompanyName) return '';
+  if (hideCompanyName || jobHideCompany) return '';
   return String(employer?.avatar_url || '').trim();
 }
 
@@ -33,13 +33,13 @@ export function resolveHideWebsite(employer: any): boolean {
   return getHideFlags(employer).hideWebsite;
 }
 
-/** Returns the display name from a flattened application/interview object.
- *  Falls back to checking the nested job.employer if available. */
-export function resolveAppCompanyName(app: { company?: string; job?: { employer?: any } }): string {
+/** Returns the display name from a flattened application/interview object. */
+export function resolveAppCompanyName(app: { company?: string; job?: { employer?: any; hide_company?: boolean } }): string {
   const employer = app.job?.employer;
+  const jobHideCompany = Boolean(app.job?.hide_company);
   if (employer) {
     const { hideCompanyName } = getHideFlags(employer);
-    if (hideCompanyName) return 'RecruitFriend';
+    if (hideCompanyName || jobHideCompany) return 'Confidential';
   }
   return app.company || 'Company';
 }

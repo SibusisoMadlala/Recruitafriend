@@ -243,8 +243,8 @@ export default function JobSearch() {
               <div className="space-y-4">
                 {jobs.map((job) => (
                   (() => {
-                    const companyName = resolveCompanyName(job?.employer, job?.company || 'Hiring Company');
-                    const companyLogo = resolveCompanyLogo(job?.employer);
+                    const companyName = resolveCompanyName(job?.employer, job?.company || 'Hiring Company', job?.hide_company);
+                    const companyLogo = resolveCompanyLogo(job?.employer, job?.hide_company);
                     const jobLocationLabel = String(job?.location || [job?.city, job?.province].filter(Boolean).join(', ') || 'South Africa').trim();
                     const employmentTypeLabel = String(job?.employment_type || job?.jobType || 'Full-time').trim();
                     const postedAtRaw = job?.created_at || job?.createdAt;

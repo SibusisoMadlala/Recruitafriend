@@ -28,6 +28,7 @@ interface PostJobFormValues {
   salary_min: number;
   salary_max: number;
   hide_salary: boolean;
+  hide_company: boolean;
   deadline: string;
   description: string;
   requirements: string;
@@ -169,7 +170,7 @@ export default function PostJob() {
    ]);
 
   const { register, handleSubmit, getValues, setValue, watch, formState: { errors } } = useForm<PostJobFormValues>({
-    defaultValues: { hide_salary: false, positions: 1, interview_type: 'video' }
+    defaultValues: { hide_salary: false, hide_company: false, positions: 1, interview_type: 'video' }
   });
 
    const selectedInterviewType = watch('interview_type') || 'video';
@@ -210,6 +211,7 @@ export default function PostJob() {
         method: 'POST',
         body: JSON.stringify({
           title: data.title,
+          hide_company: data.hide_company ?? false,
           industry: data.industry,
           category: data.category,
           employment_type: data.employment_type,
@@ -289,6 +291,15 @@ export default function PostJob() {
                    <Label>Job Title *</Label>
                    <Input placeholder="e.g. Senior Software Engineer" className="text-lg font-medium" {...register('title', { required: 'Job Title is required' })} />
                    {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
+                </div>
+                <div className="md:col-span-2">
+                   <div className="flex items-center space-x-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                      <Switch id="hide-company" onCheckedChange={(v) => setValue('hide_company', v)} />
+                      <div>
+                         <Label htmlFor="hide-company" className="font-medium text-gray-700 cursor-pointer">Hide company name</Label>
+                         <p className="text-xs text-gray-400 mt-0.5">Candidates will see "Confidential" instead of your company name</p>
+                      </div>
+                   </div>
                 </div>
                 
                 <div className="space-y-2">
