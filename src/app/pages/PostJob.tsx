@@ -297,7 +297,7 @@ export default function PostJob() {
                       <Switch id="hide-company" onCheckedChange={(v) => setValue('hide_company', v)} />
                       <div>
                          <Label htmlFor="hide-company" className="font-medium text-gray-700 cursor-pointer">Hide company name</Label>
-                         <p className="text-xs text-gray-400 mt-0.5">Candidates will see "Confidential" instead of your company name</p>
+                         <p className="text-xs text-gray-400 mt-0.5">Candidates will see "RecruitFriend" instead of your company name</p>
                       </div>
                    </div>
                 </div>
