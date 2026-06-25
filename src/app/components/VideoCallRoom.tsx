@@ -35,6 +35,10 @@ interface Props {
 
 const MAX_PEERS = 9;
 
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canScreenShare = !isIOS && !!navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices;
+
 export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, guestName, onClose }: Props) {
   const { profile, user } = useAuth();
   const myName = guestName || profile?.name || (isHost ? 'Interviewer' : (candidateName || 'Candidate'));
@@ -779,7 +783,12 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
 
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
         ? 'video/webm;codecs=vp8,opus'
-        : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '';
+        : MediaRecorder.isTypeSupported('video/webm')
+        ? 'video/webm'
+        : MediaRecorder.isTypeSupported('video/mp4')
+        ? 'video/mp4'
+        : '';
+      const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
       const rec = new MediaRecorder(combined, mimeType ? { mimeType } : undefined);
       const chunks: Blob[] = [];
       rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
@@ -787,8 +796,8 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
         if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
         audioCtx.close();
         audioCtxRef.current = null;
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        void uploadRecording(blob);
+        const blob = new Blob(chunks, { type: mimeType || `video/${ext}` });
+        void uploadRecording(blob, ext);
       };
       rec.start();
       mediaRecRef.current = rec;
@@ -805,14 +814,15 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     setRecording(false);
   }
 
-  async function uploadRecording(blob: Blob) {
+  async function uploadRecording(blob: Blob, ext = 'webm') {
     setUploading(true);
     const ts = Date.now();
-    const filePath = `${applicationId}/${ts}.webm`;
+    const filePath = `${applicationId}/${ts}.${ext}`;
+    const contentType = ext === 'mp4' ? 'video/mp4' : 'video/webm';
     try {
       const { data, error } = await supabase.storage
         .from('call-recordings')
-        .upload(filePath, blob, { contentType: 'video/webm', upsert: false });
+        .upload(filePath, blob, { contentType, upsert: false });
       if (error) throw error;
       const { data: urlData } = supabase.storage.from('call-recordings').getPublicUrl(data.path);
       await supabase.from('call_recordings').insert({
@@ -830,7 +840,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `interview-${applicationId}-${ts}.webm`;
+      a.download = `interview-${applicationId}-${ts}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1288,10 +1298,21 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
             </span>
             {videoQuality === 'hd' ? '720p' : videoQuality === 'low' ? 'Low Data' : 'Quality'}
           </button>
-          <button onClick={toggleScreen} style={Btn(!screenOn)}>
-            {screenOn ? <MonitorOff size={18} /> : <Monitor size={18} />}
-            {screenOn ? 'Stop Share' : 'Share'}
-          </button>
+          {canScreenShare ? (
+            <button onClick={toggleScreen} style={Btn(!screenOn)}>
+              {screenOn ? <MonitorOff size={18} /> : <Monitor size={18} />}
+              {screenOn ? 'Stop Share' : 'Share'}
+            </button>
+          ) : (
+            <button
+              disabled
+              title="Screen sharing is not supported on this device"
+              style={{ ...Btn(false), opacity: 0.35, cursor: 'not-allowed' }}
+            >
+              <Monitor size={18} />
+              Share
+            </button>
+          )}
           <button onClick={toggleHand} style={{ ...Btn(!handRaised), background: handRaised ? '#f59e0b' : 'rgba(255,255,255,0.15)' }}>
             <span style={{ fontSize: 16 }}>✋</span>
             {handRaised ? 'Lower' : 'Hand'}
