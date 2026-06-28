@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router';
 import { apiCall, supabase } from '../lib/supabase';
 import {
   Loader2, ChevronRight, CheckCircle2, Clock, AlertCircle, XCircle, PauseCircle,
-  Users, Briefcase, FileText, Video, TrendingUp, Building2, UserCheck, Activity,
+  Users, Briefcase, FileText, Video, Building2, Activity, Sparkles,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 
 type QueueItem = {
   id: string;
@@ -169,126 +170,131 @@ export default function AdminDashboard() {
     { label: 'AI Notes',      value: platformStats.aiNotes,      icon: Activity,   color: '#16a34a', bg: '#dcfce7' },
   ];
 
-  const roleColors: Record<string, string> = { employer: '#0A2540', seeker: '#00C853', admin: '#7c3aed' };
+  const roleTag: Record<string, { label: string; color: string }> = {
+    employer: { label: 'Employer', color: 'bg-blue-100 text-[#0A2540]' },
+    seeker:   { label: 'Seeker',   color: 'bg-green-100 text-green-700' },
+    admin:    { label: 'Admin',    color: 'bg-purple-100 text-purple-700' },
+  };
 
   return (
     <div className="space-y-8">
 
-      {/* ── Hero Stats Bar ── */}
-      <div style={{ background: 'linear-gradient(135deg, #0A2540 0%, #0d3260 100%)', borderRadius: 16, padding: '28px 32px', color: '#fff' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.5px' }}>RecruitFriend Admin</h1>
-            <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>Platform overview · {new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#00C853', color: '#fff', borderRadius: 99, padding: '4px 14px', fontSize: 12, fontWeight: 700 }}>● Live</span>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-[#0A2540]">Platform Dashboard</h1>
+          <p className="text-gray-500">Live overview of RecruitFriend activity.</p>
         </div>
-
-        {/* Primary platform numbers */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
-          {platformCards.map(card => (
-            <div key={card.label} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '16px 18px', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <div style={{ background: card.bg, borderRadius: 8, padding: 6 }}>
-                  <card.icon size={14} color={card.color} />
-                </div>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{card.label}</span>
-              </div>
-              <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#fff', lineHeight: 1 }}>
-                {statsLoading ? '—' : card.value.toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
+        <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0A2540] text-white text-xs font-bold">
+          <span className="w-2 h-2 rounded-full bg-[#00C853] animate-pulse" />
+          Live
+        </span>
       </div>
 
-      {/* ── Activity Chart + Recent Signups ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }} className="admin-chart-grid">
-        {/* Chart */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: 24, border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0A2540' }}>Activity — Last 30 Days</h2>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>Applications and new signups per day</p>
-            </div>
-            <TrendingUp size={18} color="#00C853" />
-          </div>
-          {statsLoading ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Loader2 size={28} color="#0A2540" style={{ animation: 'rfSpin 1s linear infinite' }} />
-              <style>{`@keyframes rfSpin{to{transform:rotate(360deg)}}`}</style>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="adminGradApps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00C853" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#00C853" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="adminGradSignups" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0A2540" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#0A2540" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} interval={4} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
-                <Area type="monotone" dataKey="apps" name="Applications" stroke="#00C853" strokeWidth={2} fill="url(#adminGradApps)" />
-                <Area type="monotone" dataKey="signups" name="Signups" stroke="#0A2540" strokeWidth={2} fill="url(#adminGradSignups)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      {/* Platform stat cards — same pattern as Employer Analytics */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {platformCards.map((card, i) => (
+          <Card key={i} className="border-none shadow-sm transition-transform hover:scale-[1.02]">
+            <CardContent className="p-5">
+              <div className="p-2 rounded-lg w-fit mb-3" style={{ background: card.bg }}>
+                <card.icon className="w-4 h-4" style={{ color: card.color }} />
+              </div>
+              <p className="text-2xl font-bold text-[#0A2540]">
+                {statsLoading ? '…' : card.value.toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{card.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Activity chart + Recent signups */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Chart — spans 2 cols */}
+        <Card className="lg:col-span-2 border-none shadow-sm">
+          <CardHeader>
+            <CardTitle>Activity — Last 30 Days</CardTitle>
+            <CardDescription>Applications and new signups per day</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[260px]">
+            {statsLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-7 h-7 animate-spin text-[#0A2540]" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="adminGradApps" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#00C853" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#00C853" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="adminGradSignups" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0A2540" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#0A2540" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 10 }} interval={4} dy={8} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: 12 }} />
+                  <Area type="monotone" dataKey="apps" name="Applications" stroke="#00C853" strokeWidth={2} fillOpacity={1} fill="url(#adminGradApps)" />
+                  <Area type="monotone" dataKey="signups" name="Signups" stroke="#0A2540" strokeWidth={2} fillOpacity={1} fill="url(#adminGradSignups)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Recent signups */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: 24, border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
-            <UserCheck size={16} color="#0A2540" />
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0A2540' }}>Recent Signups</h2>
-          </div>
-          {statsLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
-              <Loader2 size={24} color="#0A2540" style={{ animation: 'rfSpin 1s linear infinite' }} />
-            </div>
-          ) : recentActivity.length === 0 ? (
-            <p style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', marginTop: 40 }}>No recent signups</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {recentActivity.map(u => (
-                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: roleColors[u.role] || '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    {u.avatar_url
-                      ? <img src={u.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{(u.name || '?')[0].toUpperCase()}</span>
-                    }
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0A2540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Unknown'}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
-                      <span style={{ color: roleColors[u.role] || '#6b7280', fontWeight: 600, textTransform: 'capitalize' }}>{u.role}</span>
-                      {' · '}{new Date(u.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <Card className="border-none shadow-sm">
+          <CardHeader>
+            <CardTitle>Recent Signups</CardTitle>
+            <CardDescription>Latest users to join</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {statsLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="w-6 h-6 animate-spin text-[#0A2540]" />
+              </div>
+            ) : recentActivity.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No signups yet</p>
+            ) : (
+              <div className="space-y-3">
+                {recentActivity.map(u => {
+                  const tag = roleTag[u.role] || { label: u.role, color: 'bg-gray-100 text-gray-600' };
+                  return (
+                    <div key={u.id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#0A2540] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {u.avatar_url
+                          ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                          : <span className="text-white text-xs font-bold">{(u.name || '?')[0].toUpperCase()}</span>
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#0A2540] truncate">{u.name || 'Unknown'}</p>
+                        <p className="text-xs text-gray-400">{new Date(u.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${tag.color}`}>{tag.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ── Onboarding Queue ── */}
+      {/* Onboarding Queue */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <Building2 size={18} color="#0A2540" />
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0A2540' }}>Employer Onboarding Queue</h2>
+        <div className="flex items-center gap-2 mb-5">
+          <Building2 className="w-5 h-5 text-[#0A2540]" />
+          <h2 className="text-xl font-bold text-[#0A2540]">Employer Onboarding Queue</h2>
         </div>
 
-        {/* Queue stat tabs */}
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5 mb-4">
+        {/* Status tabs */}
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5 mb-4">
           {ALL_STATUSES.map(s => {
             const cfg = STATUS_CONFIG[s];
             return (
@@ -306,20 +312,24 @@ export default function AdminDashboard() {
           })}
         </div>
 
-        {/* SLA row */}
-        <div className="grid gap-3 md:grid-cols-2 mb-6">
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SLA Breaches (&gt;72h)</p>
-            <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.slaBreaches}</p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Backlog</p>
-            <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.pending_review + queueStats.needs_info}</p>
-          </div>
+        {/* SLA + backlog */}
+        <div className="grid gap-3 md:grid-cols-2 mb-5">
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SLA Breaches (&gt;72 h)</p>
+              <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.slaBreaches}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Backlog</p>
+              <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.pending_review + queueStats.needs_info}</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Employer table */}
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
+        <Card className="border-none shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <h3 className="text-base font-bold text-[#0A2540]">
               {STATUS_CONFIG[activeTab].label} Accounts
@@ -368,14 +378,11 @@ export default function AdminDashboard() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </div>
-
-      <style>{`
-        @media (max-width: 900px) {
-          .admin-chart-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
     </div>
   );
 }
+
+// suppress unused import warning — Sparkles reserved for future AI insights widget
+void Sparkles;
