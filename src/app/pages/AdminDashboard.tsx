@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router';
 import { apiCall, supabase } from '../lib/supabase';
 import {
   Loader2, ChevronRight, CheckCircle2, Clock, AlertCircle, XCircle, PauseCircle,
-  Users, Briefcase, FileText, Video, Building2, Activity, Sparkles,
+  Users, Briefcase, FileText, Video, Building2, Activity, TrendingUp, ArrowUpRight,
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar,
 } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 
 type QueueItem = {
   id: string;
@@ -26,9 +25,13 @@ type PlatformStats = {
   applications: number;
   interviews: number;
   aiNotes: number;
+  appsThisMonth: number;
+  signupsThisMonth: number;
+  interviewRate: number;
+  offerRate: number;
 };
 
-type ChartPoint = { name: string; apps: number; signups: number; };
+type ChartPoint = { name: string; apps: number; signups: number };
 
 const STATUS_CONFIG: Record<QueueItem['status'], { label: string; color: string; bg: string; Icon: React.ElementType }> = {
   approved:       { label: 'Approved',       color: '#16a34a', bg: '#dcfce7', Icon: CheckCircle2 },
@@ -52,38 +55,31 @@ function StatusBadge({ status }: { status: QueueItem['status'] }) {
 
 function buildChartData(days: number, applications: any[], profiles: any[]): ChartPoint[] {
   const now = new Date();
-  const points: ChartPoint[] = [];
-  for (let i = days - 1; i >= 0; i--) {
+  return Array.from({ length: days }, (_, i) => {
     const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const label = d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
+    d.setDate(d.getDate() - (days - 1 - i));
     const dayStr = d.toISOString().slice(0, 10);
-    const apps = applications.filter(a => a.created_at?.slice(0, 10) === dayStr).length;
-    const signups = profiles.filter(p => p.created_at?.slice(0, 10) === dayStr).length;
-    points.push({ name: label, apps, signups });
-  }
-  return points;
+    const label = d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
+    return {
+      name: label,
+      apps: applications.filter(a => a.created_at?.slice(0, 10) === dayStr).length,
+      signups: profiles.filter(p => p.created_at?.slice(0, 10) === dayStr).length,
+    };
+  });
 }
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-
-  // Onboarding queue state
   const [allRows, setAllRows]     = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<QueueItem['status']>('pending_review');
   const [search, setSearch]       = useState('');
+  const [stats, setStats]         = useState<PlatformStats>({ employers: 0, seekers: 0, jobs: 0, applications: 0, interviews: 0, aiNotes: 0, appsThisMonth: 0, signupsThisMonth: 0, interviewRate: 0, offerRate: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  const [recentSignups, setRecentSignups] = useState<any[]>([]);
 
-  // Platform stats state
-  const [platformStats, setPlatformStats] = useState<PlatformStats>({ employers: 0, seekers: 0, jobs: 0, applications: 0, interviews: 0, aiNotes: 0 });
-  const [statsLoading, setStatsLoading]   = useState(true);
-  const [chartData, setChartData]         = useState<ChartPoint[]>([]);
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
-
-  useEffect(() => {
-    loadQueue();
-    loadPlatformStats();
-  }, []);
+  useEffect(() => { loadQueue(); loadStats(); }, []);
 
   async function loadQueue() {
     setQueueLoading(true);
@@ -92,14 +88,13 @@ export default function AdminDashboard() {
         ALL_STATUSES.map(s => apiCall(`/admin/onboarding/queue?status=${s}`, { requireAuth: true }).then(r => r.queue || []))
       );
       setAllRows(results.flat());
-    } finally {
-      setQueueLoading(false);
-    }
+    } finally { setQueueLoading(false); }
   }
 
-  async function loadPlatformStats() {
+  async function loadStats() {
     setStatsLoading(true);
     try {
+      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
       const [
         { count: employers },
         { count: seekers },
@@ -109,6 +104,8 @@ export default function AdminDashboard() {
         { count: aiNotes },
         { data: recentApps },
         { data: recentProfiles },
+        { data: allAppsStatus },
+        { data: recent },
       ] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'employer'),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'seeker'),
@@ -116,273 +113,330 @@ export default function AdminDashboard() {
         supabase.from('applications').select('id', { count: 'exact', head: true }),
         supabase.from('call_recordings').select('id', { count: 'exact', head: true }),
         supabase.from('interview_ai_notes').select('id', { count: 'exact', head: true }),
-        supabase.from('applications').select('created_at').gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString()),
-        supabase.from('profiles').select('created_at, role').gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString()),
+        supabase.from('applications').select('created_at').gte('created_at', monthAgo),
+        supabase.from('profiles').select('created_at, role').gte('created_at', monthAgo),
+        supabase.from('applications').select('status').gte('created_at', monthAgo),
+        supabase.from('profiles').select('id, name, role, created_at, avatar_url').order('created_at', { ascending: false }).limit(6),
       ]);
 
-      setPlatformStats({
-        employers: employers ?? 0,
-        seekers: seekers ?? 0,
-        jobs: jobs ?? 0,
-        applications: applications ?? 0,
-        interviews: interviews ?? 0,
-        aiNotes: aiNotes ?? 0,
+      const totalApps = allAppsStatus?.length || 1;
+      const interviewed = allAppsStatus?.filter((a: any) => ['interview', 'offer', 'hired'].includes(a.status)).length || 0;
+      const offered = allAppsStatus?.filter((a: any) => ['offer', 'hired'].includes(a.status)).length || 0;
+
+      setStats({
+        employers: employers ?? 0, seekers: seekers ?? 0, jobs: jobs ?? 0,
+        applications: applications ?? 0, interviews: interviews ?? 0, aiNotes: aiNotes ?? 0,
+        appsThisMonth: recentApps?.length ?? 0,
+        signupsThisMonth: recentProfiles?.length ?? 0,
+        interviewRate: Math.round((interviewed / totalApps) * 100),
+        offerRate: Math.round((offered / totalApps) * 100),
       });
-
       setChartData(buildChartData(30, recentApps ?? [], recentProfiles ?? []));
-
-      // Recent activity: last 8 profiles that signed up
-      const { data: recent } = await supabase
-        .from('profiles')
-        .select('id, name, role, created_at, avatar_url')
-        .order('created_at', { ascending: false })
-        .limit(8);
-      setRecentActivity(recent ?? []);
-    } catch (err) {
-      console.error('Failed to load platform stats:', err);
-    } finally {
-      setStatsLoading(false);
-    }
+      setRecentSignups(recent ?? []);
+    } catch (err) { console.error(err); }
+    finally { setStatsLoading(false); }
   }
 
   const queueStats = useMemo(() => {
-    const counter = { approved: 0, pending_review: 0, needs_info: 0, rejected: 0, suspended: 0, slaBreaches: 0 };
-    for (const row of allRows) {
-      counter[row.status] += 1;
-      if ((row.age_hours || 0) > 72) counter.slaBreaches += 1;
-    }
-    return counter;
+    const c = { approved: 0, pending_review: 0, needs_info: 0, rejected: 0, suspended: 0, slaBreaches: 0 };
+    for (const row of allRows) { c[row.status]++; if ((row.age_hours || 0) > 72) c.slaBreaches++; }
+    return c;
   }, [allRows]);
 
   const tabRows = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return allRows
-      .filter(r => r.status === activeTab)
+    return allRows.filter(r => r.status === activeTab)
       .filter(r => !q || (r.employer_name || '').toLowerCase().includes(q) || (r.employer_email || '').toLowerCase().includes(q));
   }, [allRows, activeTab, search]);
 
-  const platformCards = [
-    { label: 'Employers',     value: platformStats.employers,    icon: Building2,  color: '#0A2540', bg: '#e8f0fe' },
-    { label: 'Job Seekers',   value: platformStats.seekers,      icon: Users,      color: '#7c3aed', bg: '#ede9fe' },
-    { label: 'Jobs Posted',   value: platformStats.jobs,         icon: Briefcase,  color: '#0891b2', bg: '#cffafe' },
-    { label: 'Applications',  value: platformStats.applications,  icon: FileText,   color: '#d97706', bg: '#fef3c7' },
-    { label: 'Interviews',    value: platformStats.interviews,   icon: Video,      color: '#dc2626', bg: '#fee2e2' },
-    { label: 'AI Notes',      value: platformStats.aiNotes,      icon: Activity,   color: '#16a34a', bg: '#dcfce7' },
+  const N = (n: number) => statsLoading ? '—' : n.toLocaleString();
+  const P = (n: number) => statsLoading ? '—' : `${n}%`;
+
+  const funnelData = [
+    { name: 'Applications', value: stats.appsThisMonth },
+    { name: 'Interviewed', value: Math.round(stats.appsThisMonth * stats.interviewRate / 100) },
+    { name: 'Offered', value: Math.round(stats.appsThisMonth * stats.offerRate / 100) },
   ];
 
-  const roleTag: Record<string, { label: string; color: string }> = {
-    employer: { label: 'Employer', color: 'bg-blue-100 text-[#0A2540]' },
-    seeker:   { label: 'Seeker',   color: 'bg-green-100 text-green-700' },
-    admin:    { label: 'Admin',    color: 'bg-purple-100 text-purple-700' },
+  const roleTag: Record<string, { label: string; dot: string }> = {
+    employer: { label: 'Employer', dot: '#0A2540' },
+    seeker:   { label: 'Seeker',   dot: '#00C853' },
+    admin:    { label: 'Admin',    dot: '#7c3aed' },
   };
 
   return (
-    <div className="space-y-8">
+    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0A2540]">Platform Dashboard</h1>
-          <p className="text-gray-500">Live overview of RecruitFriend activity.</p>
+      {/* ═══════════════════ HERO BANNER ═══════════════════ */}
+      <div style={{ background: 'linear-gradient(135deg, #0A2540 0%, #0d3260 100%)', borderRadius: 20, padding: '36px 40px', marginBottom: 28, color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#00C853', marginBottom: 6 }}>RecruitFriend · Admin</p>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: '-0.5px' }}>Platform Overview</h1>
+            <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.45)', fontSize: 13 }}>
+              {new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ background: 'rgba(0,200,83,0.15)', border: '1px solid rgba(0,200,83,0.4)', color: '#00C853', borderRadius: 99, padding: '5px 14px', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 7, height: 7, background: '#00C853', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+              Live
+            </span>
+          </div>
         </div>
-        <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0A2540] text-white text-xs font-bold">
-          <span className="w-2 h-2 rounded-full bg-[#00C853] animate-pulse" />
-          Live
-        </span>
+
+        {/* 6 main KPIs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+          {[
+            { label: 'Employers',       value: N(stats.employers),      icon: Building2, accent: '#60a5fa' },
+            { label: 'Job Seekers',     value: N(stats.seekers),        icon: Users,     accent: '#00C853' },
+            { label: 'Jobs Posted',     value: N(stats.jobs),           icon: Briefcase, accent: '#f59e0b' },
+            { label: 'Applications',    value: N(stats.applications),   icon: FileText,  accent: '#a78bfa' },
+            { label: 'Interviews',      value: N(stats.interviews),     icon: Video,     accent: '#f87171' },
+            { label: 'AI Notes',        value: N(stats.aiNotes),        icon: Activity,  accent: '#34d399' },
+          ].map(({ label, value, icon: Icon, accent }) => (
+            <div key={label} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '20px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Icon size={16} color={accent} />
+                <ArrowUpRight size={13} color="rgba(255,255,255,0.25)" />
+              </div>
+              <p style={{ margin: 0, fontSize: 32, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-1px' }}>{value}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Platform stat cards — same pattern as Employer Analytics */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {platformCards.map((card, i) => (
-          <Card key={i} className="border-none shadow-sm transition-transform hover:scale-[1.02]">
-            <CardContent className="p-5">
-              <div className="p-2 rounded-lg w-fit mb-3" style={{ background: card.bg }}>
-                <card.icon className="w-4 h-4" style={{ color: card.color }} />
-              </div>
-              <p className="text-2xl font-bold text-[#0A2540]">
-                {statsLoading ? '…' : card.value.toLocaleString()}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">{card.label}</p>
-            </CardContent>
-          </Card>
+      {/* ═══════════════════ METRICS ROW ═══════════════════ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
+        {[
+          { label: 'Apps This Month',    value: N(stats.appsThisMonth),    sub: 'last 30 days',           color: '#0A2540' },
+          { label: 'New Signups',        value: N(stats.signupsThisMonth), sub: 'last 30 days',           color: '#0A2540' },
+          { label: 'Interview Rate',     value: P(stats.interviewRate),    sub: 'apps → interview',       color: stats.interviewRate >= 30 ? '#16a34a' : '#d97706' },
+          { label: 'Offer Rate',         value: P(stats.offerRate),        sub: 'apps → offer',           color: stats.offerRate >= 10 ? '#16a34a' : '#d97706' },
+          { label: 'Pending Review',     value: N(queueStats.pending_review), sub: 'employers in queue',  color: queueStats.pending_review > 0 ? '#d97706' : '#16a34a' },
+          { label: 'SLA Breaches',       value: N(queueStats.slaBreaches), sub: 'over 72 hours',          color: queueStats.slaBreaches > 0 ? '#dc2626' : '#16a34a' },
+        ].map(({ label, value, sub, color }) => (
+          <div key={label} style={{ background: '#fff', borderRadius: 14, padding: '20px 20px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color, letterSpacing: '-0.5px' }}>{value}</p>
+            <p style={{ margin: '4px 0 2px', fontSize: 13, fontWeight: 600, color: '#0A2540' }}>{label}</p>
+            <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{sub}</p>
+          </div>
         ))}
       </div>
 
-      {/* Activity chart + Recent signups */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ═══════════════════ CHART + FUNNEL + SIGNUPS ═══════════════════ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginBottom: 28 }}>
 
-        {/* Chart — spans 2 cols */}
-        <Card className="lg:col-span-2 border-none shadow-sm">
-          <CardHeader>
-            <CardTitle>Activity — Last 30 Days</CardTitle>
-            <CardDescription>Applications and new signups per day</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[260px]">
+        {/* Activity chart */}
+        <div style={{ background: '#fff', borderRadius: 16, padding: '24px 24px 16px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0A2540' }}>Activity — Last 30 Days</p>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af' }}>Daily applications and new signups</p>
+            </div>
+            <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#6b7280' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 3, background: '#00C853', borderRadius: 2, display: 'inline-block' }} />Applications</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 3, background: '#0A2540', borderRadius: 2, display: 'inline-block' }} />Signups</span>
+            </div>
+          </div>
+          {statsLoading ? (
+            <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Loader2 size={28} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gApps" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#00C853" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#00C853" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gSig" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#0A2540" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#0A2540" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} interval={4} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
+                <Area type="monotone" dataKey="apps" name="Applications" stroke="#00C853" strokeWidth={2} fill="url(#gApps)" />
+                <Area type="monotone" dataKey="signups" name="Signups" stroke="#0A2540" strokeWidth={2} fill="url(#gSig)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Right column: Conversion funnel + Recent signups */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Conversion funnel */}
+          <div style={{ background: '#0A2540', borderRadius: 16, padding: '20px 20px', flex: 1 }}>
+            <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#fff' }}>Conversion Funnel</p>
+            <p style={{ margin: '0 0 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>This month</p>
             {statsLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-7 h-7 animate-spin text-[#0A2540]" />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 80 }}>
+                <Loader2 size={20} color="#00C853" style={{ animation: 'spin 1s linear infinite' }} />
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="adminGradApps" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00C853" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#00C853" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="adminGradSignups" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0A2540" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#0A2540" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 10 }} interval={4} dy={8} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: 12 }} />
-                  <Area type="monotone" dataKey="apps" name="Applications" stroke="#00C853" strokeWidth={2} fillOpacity={1} fill="url(#adminGradApps)" />
-                  <Area type="monotone" dataKey="signups" name="Signups" stroke="#0A2540" strokeWidth={2} fillOpacity={1} fill="url(#adminGradSignups)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent signups */}
-        <Card className="border-none shadow-sm">
-          <CardHeader>
-            <CardTitle>Recent Signups</CardTitle>
-            <CardDescription>Latest users to join</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? (
-              <div className="flex items-center justify-center h-32">
-                <Loader2 className="w-6 h-6 animate-spin text-[#0A2540]" />
-              </div>
-            ) : recentActivity.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No signups yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recentActivity.map(u => {
-                  const tag = roleTag[u.role] || { label: u.role, color: 'bg-gray-100 text-gray-600' };
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {funnelData.map((row, i) => {
+                  const pct = funnelData[0].value > 0 ? Math.round((row.value / funnelData[0].value) * 100) : 0;
+                  const colors = ['#00C853', '#60a5fa', '#f59e0b'];
                   return (
-                    <div key={u.id} className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#0A2540] flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        {u.avatar_url
-                          ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
-                          : <span className="text-white text-xs font-bold">{(u.name || '?')[0].toUpperCase()}</span>
-                        }
+                    <div key={row.name}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{row.name}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: colors[i] }}>{row.value}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#0A2540] truncate">{u.name || 'Unknown'}</p>
-                        <p className="text-xs text-gray-400">{new Date(u.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</p>
+                      <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 4 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: colors[i], borderRadius: 4, transition: 'width 0.8s ease' }} />
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${tag.color}`}>{tag.label}</span>
                     </div>
                   );
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Recent signups */}
+          <div style={{ background: '#fff', borderRadius: 16, padding: '20px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <p style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 700, color: '#0A2540' }}>Recent Signups</p>
+            {statsLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 60 }}>
+                <Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {recentSignups.map(u => {
+                  const rt = roleTag[u.role] || { label: u.role, dot: '#9ca3af' };
+                  return (
+                    <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                        {u.avatar_url
+                          ? <img src={u.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>{(u.name || '?')[0].toUpperCase()}</span>
+                        }
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#0A2540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Unknown'}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>{new Date(u.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</p>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: rt.dot + '18', color: rt.dot, whiteSpace: 'nowrap' }}>{rt.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
 
-      {/* Onboarding Queue */}
+      {/* ═══════════════════ HIRING TRENDS BAR CHART ═══════════════════ */}
+      <div style={{ background: '#fff', borderRadius: 16, padding: '24px 24px 16px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <TrendingUp size={16} color="#00C853" />
+          <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0A2540' }}>Hiring Trends</p>
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 12, color: '#9ca3af' }}>Daily application volume over the last 30 days</p>
+        {statsLoading ? (
+          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Loader2 size={24} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chartData} margin={{ top: 2, right: 4, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} interval={4} dy={8} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
+              <Bar dataKey="apps" name="Applications" fill="#00C853" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ═══════════════════ ONBOARDING QUEUE ═══════════════════ */}
       <div>
-        <div className="flex items-center gap-2 mb-5">
-          <Building2 className="w-5 h-5 text-[#0A2540]" />
-          <h2 className="text-xl font-bold text-[#0A2540]">Employer Onboarding Queue</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <Building2 size={18} color="#0A2540" />
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0A2540' }}>Employer Onboarding Queue</h2>
         </div>
 
         {/* Status tabs */}
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5 mb-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
           {ALL_STATUSES.map(s => {
             const cfg = STATUS_CONFIG[s];
+            const active = activeTab === s;
             return (
               <button
                 key={s}
                 onClick={() => setActiveTab(s)}
-                className={`rounded-xl border p-4 text-left transition-all ${activeTab === s ? 'border-[#0A2540] bg-[#0A2540] text-white' : 'border-gray-100 bg-white hover:border-gray-300'}`}
+                style={{ background: active ? '#0A2540' : '#fff', border: `1px solid ${active ? '#0A2540' : '#e5e7eb'}`, borderRadius: 12, padding: '14px 16px', textAlign: 'left', cursor: 'pointer', transition: 'all 0.15s' }}
               >
-                <p className={`text-xs font-semibold uppercase tracking-wide ${activeTab === s ? 'text-blue-200' : 'text-gray-500'}`}>{cfg.label}</p>
-                <p className={`mt-1 text-2xl font-bold ${activeTab === s ? 'text-white' : 'text-[#0A2540]'}`}>
-                  {queueLoading ? '…' : queueStats[s]}
-                </p>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: active ? 'rgba(255,255,255,0.5)' : '#9ca3af' }}>{cfg.label}</p>
+                <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: active ? '#fff' : '#0A2540' }}>{queueLoading ? '…' : queueStats[s]}</p>
               </button>
             );
           })}
         </div>
 
-        {/* SLA + backlog */}
-        <div className="grid gap-3 md:grid-cols-2 mb-5">
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SLA Breaches (&gt;72 h)</p>
-              <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.slaBreaches}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Backlog</p>
-              <p className="mt-1 text-2xl font-bold text-[#0A2540]">{queueLoading ? '…' : queueStats.pending_review + queueStats.needs_info}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Employer table */}
-        <Card className="border-none shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-            <h3 className="text-base font-bold text-[#0A2540]">
+        {/* Table */}
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f3f4f6', flexWrap: 'wrap', gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0A2540' }}>
               {STATUS_CONFIG[activeTab].label} Accounts
-              <span className="ml-2 text-sm font-normal text-gray-400">({queueLoading ? '…' : tabRows.length})</span>
-            </h3>
+              <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#9ca3af' }}>({queueLoading ? '…' : tabRows.length})</span>
+            </p>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by name or email…"
-              className="h-9 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-[#0A2540] w-56"
+              style={{ height: 36, border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 13, outline: 'none', width: 220, color: '#0A2540' }}
             />
           </div>
 
           {queueLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-6 h-6 animate-spin text-[#0A2540]" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+              <Loader2 size={24} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
             </div>
           ) : tabRows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-400">
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: 13 }}>
               No {STATUS_CONFIG[activeTab].label.toLowerCase()} accounts found.
             </div>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {tabRows.map(row => (
-                <div key={row.id} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-[#0A2540] flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-sm font-bold">{(row.employer_name || '?')[0].toUpperCase()}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[#0A2540] truncate">{row.employer_name || 'Unknown'}</p>
-                      <p className="text-xs text-gray-400 truncate">{row.employer_email || 'No email'}</p>
-                    </div>
+            tabRows.map(row => (
+              <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '14px 20px', borderBottom: '1px solid #f9fafb' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{(row.employer_name || '?')[0].toUpperCase()}</span>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <StatusBadge status={row.status} />
-                    <span className="text-xs text-gray-400 hidden sm:block">{row.age_hours ?? 0}h ago</span>
-                    <button
-                      onClick={() => navigate('/admin/onboarding')}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-[#0A2540] text-white text-xs font-semibold rounded-lg hover:bg-[#0d2f50] transition-colors"
-                    >
-                      Review <ChevronRight className="w-3 h-3" />
-                    </button>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0A2540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_name || 'Unknown'}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_email || 'No email'}</p>
                   </div>
                 </div>
-              ))}
-            </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                  <StatusBadge status={row.status} />
+                  <span style={{ fontSize: 12, color: '#9ca3af' }}>{row.age_hours ?? 0}h ago</span>
+                  <button
+                    onClick={() => navigate('/admin/onboarding')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#0A2540', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Review <ChevronRight size={12} />
+                  </button>
+                </div>
+              </div>
+            ))
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );
 }
-
-// suppress unused import warning — Sparkles reserved for future AI insights widget
-void Sparkles;
