@@ -39,6 +39,8 @@ const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const canScreenShare = !isIOS && !!navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices;
 const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+// Auto-transcription works on Chrome/Edge desktop+Android. iOS needs a tap-per-session so we fall back to manual.
+const canAutoTranscribe = !isIOS && !!SpeechRecognitionAPI;
 
 export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, guestName, onClose }: Props) {
   const { profile, user } = useAuth();
@@ -112,6 +114,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [notesGenerated, setNotesGenerated]   = useState(false);
   const [showNotesModal, setShowNotesModal]   = useState(false);
+  const [manualNotes, setManualNotes]         = useState('');
   const transcriptRef   = useRef('');
   const recognitionRef  = useRef<any>(null);
 
@@ -125,9 +128,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     return () => clearInterval(t);
   }, [status]);
 
-  // ─── Speech transcription (host only, Chrome/Edge) ───────────────────────
+  // ─── Speech transcription (host only, Chrome/Edge/Android — auto mode) ──
   useEffect(() => {
-    if (!isHost || !SpeechRecognitionAPI || status !== 'connected') return;
+    if (!isHost || !canAutoTranscribe || status !== 'connected') return;
     const recog = new SpeechRecognitionAPI();
     recog.continuous = true;
     recog.interimResults = false;
@@ -898,10 +901,9 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   }
 
   async function generateInterviewNotes(thenClose = false) {
-    const transcript = transcriptRef.current.trim();
-    if (!transcript || transcript.length < 80) {
-      toast.error('Not enough conversation captured yet — keep talking!');
-      setShowNotesModal(false);
+    const transcript = transcriptRef.current.trim() || manualNotes.trim();
+    if (!transcript || transcript.length < 30) {
+      toast.error('Please add some notes or wait for more conversation to be captured.');
       if (thenClose) { recognitionRef.current = null; onClose(); }
       return;
     }
@@ -929,8 +931,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   }
 
   function handleEndCall() {
-    const hasTranscript = isHost && transcriptRef.current.trim().length > 80 && !notesGenerated;
-    if (hasTranscript) {
+    if (isHost && !notesGenerated) {
       setShowNotesModal(true);
     } else {
       recognitionRef.current = null;
@@ -1429,7 +1430,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               )}
             </button>
           )}
-          {isHost && SpeechRecognitionAPI && (
+          {isHost && (
             <button
               onClick={() => generatingNotes ? null : notesGenerated ? void 0 : setShowNotesModal(true)}
               disabled={generatingNotes}
@@ -1456,9 +1457,24 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               <Sparkles size={22} color="#00C853" />
               <span style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>Generate AI Interview Notes?</span>
             </div>
-            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 1.6, margin: '0 0 22px' }}>
-              RecruitFriend AI will analyse the conversation and create a structured summary with scores, strengths, concerns and a recommendation — saved to your Interview Notes.
-            </p>
+            {canAutoTranscribe && transcriptRef.current.trim().length > 30 ? (
+              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 1.6, margin: '0 0 16px' }}>
+                Conversation captured ({Math.round(transcriptRef.current.trim().split(' ').length / 130)} min). AI will create a structured summary with scores, strengths, concerns and a recommendation.
+              </p>
+            ) : (
+              <>
+                <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>
+                  {canAutoTranscribe ? 'Not enough audio captured yet.' : 'Auto-transcription is not available on this browser.'} Type or paste your interview notes below and AI will structure them for you.
+                </p>
+                <textarea
+                  value={manualNotes}
+                  onChange={e => setManualNotes(e.target.value)}
+                  placeholder={`E.g.\nCandidate has 5 years welding experience, trade tested 2021.\nStrong communication, asked good questions about the role.\nSalary expectation R25 000. Available immediately.\nConcern: no SAP experience.`}
+                  rows={6}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13, lineHeight: 1.6, resize: 'vertical', outline: 'none', boxSizing: 'border-box', marginBottom: 14, fontFamily: 'inherit' }}
+                />
+              </>
+            )}
             <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
               <button
                 onClick={() => generateInterviewNotes(true)}
