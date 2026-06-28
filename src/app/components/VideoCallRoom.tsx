@@ -3,9 +3,9 @@ import {
   X, Video, VideoOff, Mic, MicOff, Monitor, MonitorOff,
   MessageSquare, Users, Maximize2, Minimize2, Send, PhoneOff,
   Wifi, WifiOff, Copy, Check, UserPlus, Loader2,
-  Circle, Square, FileText, Save,
+  Circle, Square, FileText, Save, Sparkles,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, apiCall } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 
@@ -38,6 +38,7 @@ const MAX_PEERS = 9;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const canScreenShare = !isIOS && !!navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices;
+const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
 export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost = false, guestName, onClose }: Props) {
   const { profile, user } = useAuth();
@@ -108,6 +109,11 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
   const rafIdRef                        = useRef<number | null>(null);
   const [notes, setNotes]               = useState('');
   const [notesSaved, setNotesSaved]     = useState(false);
+  const [generatingNotes, setGeneratingNotes] = useState(false);
+  const [notesGenerated, setNotesGenerated]   = useState(false);
+  const [showNotesModal, setShowNotesModal]   = useState(false);
+  const transcriptRef   = useRef('');
+  const recognitionRef  = useRef<any>(null);
 
 
   const meetingLink = `${window.location.origin}/join/${applicationId}`;
@@ -118,6 +124,30 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     const t = setInterval(() => setDuration(d => d + 1), 1000);
     return () => clearInterval(t);
   }, [status]);
+
+  // ─── Speech transcription (host only, Chrome/Edge) ───────────────────────
+  useEffect(() => {
+    if (!isHost || !SpeechRecognitionAPI || status !== 'connected') return;
+    const recog = new SpeechRecognitionAPI();
+    recog.continuous = true;
+    recog.interimResults = false;
+    recog.lang = 'en-ZA';
+    recog.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcriptRef.current += event.results[i][0].transcript + ' ';
+        }
+      }
+    };
+    recog.onend = () => { if (recognitionRef.current === recog) { try { recog.start(); } catch {} } };
+    try { recog.start(); } catch {}
+    recognitionRef.current = recog;
+    return () => {
+      recognitionRef.current = null;
+      recog.onend = null;
+      try { recog.stop(); } catch {}
+    };
+  }, [isHost, status]);
 
   // ─── Quality (first peer) ────────────────────────────────────────────────
   useEffect(() => {
@@ -867,6 +897,47 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
     setTimeout(() => setNotesSaved(false), 2500);
   }
 
+  async function generateInterviewNotes(thenClose = false) {
+    const transcript = transcriptRef.current.trim();
+    if (!transcript || transcript.length < 80) {
+      toast.error('Not enough conversation captured yet — keep talking!');
+      setShowNotesModal(false);
+      if (thenClose) { recognitionRef.current = null; onClose(); }
+      return;
+    }
+    setGeneratingNotes(true);
+    setShowNotesModal(false);
+    try {
+      const { notes: result } = await apiCall('/ai/interview-notes', {
+        method: 'POST',
+        body: JSON.stringify({ transcript, candidateName, jobTitle }),
+      });
+      await supabase.from('interview_ai_notes').insert({
+        candidate_name: candidateName || null,
+        job_title: jobTitle || null,
+        interview_date: new Date().toISOString(),
+        ...result,
+      });
+      setNotesGenerated(true);
+      toast.success('AI interview notes saved! View them in Interview Notes.');
+    } catch (err: any) {
+      toast.error('Could not generate notes: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setGeneratingNotes(false);
+      if (thenClose) { recognitionRef.current = null; onClose(); }
+    }
+  }
+
+  function handleEndCall() {
+    const hasTranscript = isHost && transcriptRef.current.trim().length > 80 && !notesGenerated;
+    if (hasTranscript) {
+      setShowNotesModal(true);
+    } else {
+      recognitionRef.current = null;
+      onClose();
+    }
+  }
+
   function copyInvite(label: string, key: string) {
     navigator.clipboard.writeText(meetingLink).then(() => {
       setCopiedFor(key);
@@ -974,7 +1045,7 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
           <button onClick={toggleFullscreen} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
             {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </button>
-          <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          <button onClick={handleEndCall} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
             <X size={13} /> Leave
           </button>
         </div>
@@ -1358,11 +1429,57 @@ export function VideoCallRoom({ applicationId, candidateName, jobTitle, isHost =
               )}
             </button>
           )}
+          {isHost && SpeechRecognitionAPI && (
+            <button
+              onClick={() => generatingNotes ? null : notesGenerated ? void 0 : setShowNotesModal(true)}
+              disabled={generatingNotes}
+              title={notesGenerated ? 'Notes already saved' : 'Generate AI interview notes'}
+              style={{ ...Btn(notesGenerated), background: notesGenerated ? '#00C853' : generatingNotes ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)', opacity: generatingNotes ? 0.7 : 1 }}
+            >
+              {generatingNotes ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={18} />}
+              {notesGenerated ? 'Saved' : generatingNotes ? 'Saving…' : 'AI Notes'}
+            </button>
+          )}
           <div style={{ width: 1, height: 40, background: 'rgba(255,255,255,0.15)', margin: '0 2px' }} />
-          <button onClick={onClose} style={{ ...Btn(true, true), background: '#dc2626', minWidth: 60 }}>
+          <button onClick={handleEndCall} style={{ ...Btn(true, true), background: '#dc2626', minWidth: 60 }}>
             <PhoneOff size={18} />
             End
           </button>
+        </div>
+      )}
+
+      {/* ── AI Notes Modal ── */}
+      {showNotesModal && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#0A2540', borderRadius: 16, padding: 28, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <Sparkles size={22} color="#00C853" />
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>Generate AI Interview Notes?</span>
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, lineHeight: 1.6, margin: '0 0 22px' }}>
+              RecruitFriend AI will analyse the conversation and create a structured summary with scores, strengths, concerns and a recommendation — saved to your Interview Notes.
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
+              <button
+                onClick={() => generateInterviewNotes(true)}
+                style={{ background: '#00C853', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                <Sparkles size={15} /> Generate Notes &amp; End Call
+              </button>
+              <button
+                onClick={() => generateInterviewNotes(false)}
+                style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10, padding: '11px 0', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+              >
+                Generate Notes &amp; Stay in Call
+              </button>
+              <button
+                onClick={() => { setShowNotesModal(false); recognitionRef.current = null; onClose(); }}
+                style={{ background: 'transparent', color: 'rgba(255,255,255,0.45)', border: 'none', borderRadius: 10, padding: '10px 0', fontSize: 13, cursor: 'pointer' }}
+              >
+                Skip &amp; End Call
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

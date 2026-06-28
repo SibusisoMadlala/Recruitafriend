@@ -3691,6 +3691,66 @@ app.post('/make-server-bca21fd3/ai/cv-improve', async (c) => {
   }
 });
 
+app.post('/make-server-bca21fd3/ai/interview-notes', async (c) => {
+  try {
+    const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+    if (!ANTHROPIC_KEY) return c.json({ error: 'AI not configured' }, 500);
+
+    const { transcript, candidateName, jobTitle } = await c.req.json();
+    if (!transcript?.trim() || transcript.trim().length < 50) return c.json({ error: 'Transcript too short' }, 400);
+
+    const prompt = `You are an expert South African recruitment assistant. Analyse this job interview transcript and extract structured insights.
+
+Candidate: ${candidateName || 'Unknown'}
+Position: ${jobTitle || 'Unknown'}
+
+TRANSCRIPT:
+${transcript.slice(0, 8000)}
+
+Respond with ONLY a valid JSON object (no markdown, no code fences) with exactly these keys:
+{
+  "summary": "2-3 sentence overview of the candidate and interview",
+  "key_points": ["array of up to 5 key discussion points"],
+  "skills": ["technical and soft skills mentioned"],
+  "qualifications": ["qualifications and certifications mentioned"],
+  "experience": ["relevant experience highlights"],
+  "strengths": ["candidate strengths observed"],
+  "concerns": ["concerns or gaps identified, or empty array if none"],
+  "action_items": ["recommended next steps for the recruiter"],
+  "recommendation": "Clear recommendation: Proceed to next round / Hold / Reject — include 1 sentence of reasoning",
+  "salary_expectations": "salary or range mentioned, or 'Not discussed'",
+  "availability": "start date or notice period mentioned, or 'Not discussed'",
+  "score_communication": <integer 0-100>,
+  "score_technical": <integer 0-100>,
+  "score_experience_relevance": <integer 0-100>,
+  "score_confidence": <integer 0-100>,
+  "score_overall": <integer 0-100>
+}`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!res.ok) return c.json({ error: 'AI request failed' }, 500);
+    const result = await res.json();
+    const raw = result.content?.[0]?.text?.trim() ?? '{}';
+    const notes = JSON.parse(raw.replace(/^```json?\n?/, '').replace(/\n?```$/, ''));
+    return c.json({ notes });
+  } catch (err) {
+    console.error('AI interview-notes error:', err);
+    return c.json({ error: 'Failed to generate notes' }, 500);
+  }
+});
+
 // ============== SUBSCRIPTIONS ==============
 
 app.post('/make-server-bca21fd3/subscriptions/change', async (c) => {
