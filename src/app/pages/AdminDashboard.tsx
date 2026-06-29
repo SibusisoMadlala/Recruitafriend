@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { apiCall, supabase } from '../lib/supabase';
+import { apiCall } from '../lib/supabase';
 import {
   Loader2, ChevronRight, CheckCircle2, Clock, AlertCircle, XCircle, PauseCircle,
   Users, Briefcase, FileText, Video, Building2, Activity, TrendingUp, ArrowUpRight,
@@ -94,45 +94,15 @@ export default function AdminDashboard() {
   async function loadStats() {
     setStatsLoading(true);
     try {
-      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-      const [
-        { count: employers },
-        { count: seekers },
-        { count: jobs },
-        { count: applications },
-        { count: interviews },
-        { count: aiNotes },
-        { data: recentApps },
-        { data: recentProfiles },
-        { data: allAppsStatus },
-        { data: recent },
-      ] = await Promise.all([
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'employer'),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'seeker'),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }),
-        supabase.from('applications').select('id', { count: 'exact', head: true }),
-        supabase.from('call_recordings').select('id', { count: 'exact', head: true }),
-        supabase.from('interview_ai_notes').select('id', { count: 'exact', head: true }),
-        supabase.from('applications').select('created_at').gte('created_at', monthAgo),
-        supabase.from('profiles').select('created_at, role').gte('created_at', monthAgo),
-        supabase.from('applications').select('status').gte('created_at', monthAgo),
-        supabase.from('profiles').select('id, name, role, created_at, avatar_url').order('created_at', { ascending: false }).limit(6),
-      ]);
-
-      const totalApps = allAppsStatus?.length || 1;
-      const interviewed = allAppsStatus?.filter((a: any) => ['interview', 'offer', 'hired'].includes(a.status)).length || 0;
-      const offered = allAppsStatus?.filter((a: any) => ['offer', 'hired'].includes(a.status)).length || 0;
-
+      const data = await apiCall('/admin/stats', { requireAuth: true });
       setStats({
-        employers: employers ?? 0, seekers: seekers ?? 0, jobs: jobs ?? 0,
-        applications: applications ?? 0, interviews: interviews ?? 0, aiNotes: aiNotes ?? 0,
-        appsThisMonth: recentApps?.length ?? 0,
-        signupsThisMonth: recentProfiles?.length ?? 0,
-        interviewRate: Math.round((interviewed / totalApps) * 100),
-        offerRate: Math.round((offered / totalApps) * 100),
+        employers: data.employers, seekers: data.seekers, jobs: data.jobs,
+        applications: data.applications, interviews: data.interviews, aiNotes: data.aiNotes,
+        appsThisMonth: data.appsThisMonth, signupsThisMonth: data.signupsThisMonth,
+        interviewRate: data.interviewRate, offerRate: data.offerRate,
       });
-      setChartData(buildChartData(30, recentApps ?? [], recentProfiles ?? []));
-      setRecentSignups(recent ?? []);
+      setChartData(buildChartData(30, data.recentApps ?? [], data.recentProfiles ?? []));
+      setRecentSignups(data.recentSignups ?? []);
     } catch (err) { console.error(err); }
     finally { setStatsLoading(false); }
   }
@@ -166,67 +136,81 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif' }}>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        .rf-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+        .rf-metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+        .rf-chart-row{display:grid;grid-template-columns:1fr 260px;gap:20px;margin-bottom:24px}
+        .rf-queue-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
+        .rf-hero{background:linear-gradient(135deg,#0A2540 0%,#0d3260 100%);border-radius:16px;padding:24px;margin-bottom:20px;color:#fff}
+        @media(max-width:640px){
+          .rf-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px}
+          .rf-metrics-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px}
+          .rf-chart-row{grid-template-columns:1fr!important}
+          .rf-queue-tabs{grid-template-columns:repeat(3,1fr)!important;gap:8px}
+          .rf-hero{padding:18px 16px!important;border-radius:12px!important}
+        }
+      `}</style>
 
       {/* ═══════════════════ HERO BANNER ═══════════════════ */}
-      <div style={{ background: 'linear-gradient(135deg, #0A2540 0%, #0d3260 100%)', borderRadius: 20, padding: '36px 40px', marginBottom: 28, color: '#fff' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap', gap: 12 }}>
+      <div className="rf-hero">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#00C853', marginBottom: 6 }}>RecruitFriend · Admin</p>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: '-0.5px' }}>Platform Overview</h1>
-            <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.45)', fontSize: 13 }}>
-              {new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#00C853', marginBottom: 4 }}>RecruitFriend · Admin</p>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px' }}>Platform Overview</h1>
+            <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+              {new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ background: 'rgba(0,200,83,0.15)', border: '1px solid rgba(0,200,83,0.4)', color: '#00C853', borderRadius: 99, padding: '5px 14px', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 7, height: 7, background: '#00C853', borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-              Live
-            </span>
-          </div>
+          <span style={{ background: 'rgba(0,200,83,0.15)', border: '1px solid rgba(0,200,83,0.4)', color: '#00C853', borderRadius: 99, padding: '4px 12px', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, background: '#00C853', borderRadius: '50%', display: 'inline-block' }} />
+            Live
+          </span>
         </div>
 
         {/* 6 main KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+        <div className="rf-kpi-grid">
           {[
-            { label: 'Employers',       value: N(stats.employers),      icon: Building2, accent: '#60a5fa' },
-            { label: 'Job Seekers',     value: N(stats.seekers),        icon: Users,     accent: '#00C853' },
-            { label: 'Jobs Posted',     value: N(stats.jobs),           icon: Briefcase, accent: '#f59e0b' },
-            { label: 'Applications',    value: N(stats.applications),   icon: FileText,  accent: '#a78bfa' },
-            { label: 'Interviews',      value: N(stats.interviews),     icon: Video,     accent: '#f87171' },
-            { label: 'AI Notes',        value: N(stats.aiNotes),        icon: Activity,  accent: '#34d399' },
+            { label: 'Employers',    value: N(stats.employers),    icon: Building2, accent: '#60a5fa' },
+            { label: 'Job Seekers',  value: N(stats.seekers),      icon: Users,     accent: '#00C853' },
+            { label: 'Jobs Posted',  value: N(stats.jobs),         icon: Briefcase, accent: '#f59e0b' },
+            { label: 'Applications', value: N(stats.applications), icon: FileText,  accent: '#a78bfa' },
+            { label: 'Interviews',   value: N(stats.interviews),   icon: Video,     accent: '#f87171' },
+            { label: 'AI Notes',     value: N(stats.aiNotes),      icon: Activity,  accent: '#34d399' },
           ].map(({ label, value, icon: Icon, accent }) => (
-            <div key={label} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '20px 18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <Icon size={16} color={accent} />
-                <ArrowUpRight size={13} color="rgba(255,255,255,0.25)" />
+            <div key={label} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '16px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Icon size={15} color={accent} />
+                <ArrowUpRight size={12} color="rgba(255,255,255,0.25)" />
               </div>
-              <p style={{ margin: 0, fontSize: 32, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-1px' }}>{value}</p>
-              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+              <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.5px' }}>{value}</p>
+              <p style={{ margin: '5px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* ═══════════════════ METRICS ROW ═══════════════════ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
+      <div className="rf-metrics-grid">
         {[
-          { label: 'Apps This Month',    value: N(stats.appsThisMonth),    sub: 'last 30 days',           color: '#0A2540' },
-          { label: 'New Signups',        value: N(stats.signupsThisMonth), sub: 'last 30 days',           color: '#0A2540' },
-          { label: 'Interview Rate',     value: P(stats.interviewRate),    sub: 'apps → interview',       color: stats.interviewRate >= 30 ? '#16a34a' : '#d97706' },
-          { label: 'Offer Rate',         value: P(stats.offerRate),        sub: 'apps → offer',           color: stats.offerRate >= 10 ? '#16a34a' : '#d97706' },
-          { label: 'Pending Review',     value: N(queueStats.pending_review), sub: 'employers in queue',  color: queueStats.pending_review > 0 ? '#d97706' : '#16a34a' },
-          { label: 'SLA Breaches',       value: N(queueStats.slaBreaches), sub: 'over 72 hours',          color: queueStats.slaBreaches > 0 ? '#dc2626' : '#16a34a' },
+          { label: 'Apps This Month',  value: N(stats.appsThisMonth),       sub: 'last 30 days',       color: '#0A2540' },
+          { label: 'New Signups',      value: N(stats.signupsThisMonth),    sub: 'last 30 days',       color: '#0A2540' },
+          { label: 'Interview Rate',   value: P(stats.interviewRate),       sub: 'apps → interview',   color: stats.interviewRate >= 30 ? '#16a34a' : '#d97706' },
+          { label: 'Offer Rate',       value: P(stats.offerRate),           sub: 'apps → offer',       color: stats.offerRate >= 10 ? '#16a34a' : '#d97706' },
+          { label: 'Pending Review',   value: N(queueStats.pending_review), sub: 'employers in queue', color: queueStats.pending_review > 0 ? '#d97706' : '#16a34a' },
+          { label: 'SLA Breaches',     value: N(queueStats.slaBreaches),    sub: 'over 72 hours',      color: queueStats.slaBreaches > 0 ? '#dc2626' : '#16a34a' },
         ].map(({ label, value, sub, color }) => (
-          <div key={label} style={{ background: '#fff', borderRadius: 14, padding: '20px 20px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color, letterSpacing: '-0.5px' }}>{value}</p>
-            <p style={{ margin: '4px 0 2px', fontSize: 13, fontWeight: 600, color: '#0A2540' }}>{label}</p>
+          <div key={label} style={{ background: '#fff', borderRadius: 12, padding: '16px', border: '1px solid #e5e7eb' }}>
+            <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color, letterSpacing: '-0.5px' }}>{value}</p>
+            <p style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, color: '#0A2540' }}>{label}</p>
             <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{sub}</p>
           </div>
         ))}
       </div>
 
       {/* ═══════════════════ CHART + FUNNEL + SIGNUPS ═══════════════════ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginBottom: 28 }}>
+      <div className="rf-chart-row">
 
         {/* Activity chart */}
         <div style={{ background: '#fff', borderRadius: 16, padding: '24px 24px 16px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -243,7 +227,6 @@ export default function AdminDashboard() {
           {statsLoading ? (
             <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Loader2 size={28} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
-              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
@@ -311,7 +294,7 @@ export default function AdminDashboard() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {recentSignups.map(u => {
-                  const rt = roleTag[u.role] || { label: u.role, dot: '#9ca3af' };
+                  const rt = roleTag[u.user_type] || { label: u.user_type, dot: '#9ca3af' };
                   return (
                     <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
@@ -367,7 +350,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Status tabs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div className="rf-queue-tabs">
           {ALL_STATUSES.map(s => {
             const cfg = STATUS_CONFIG[s];
             const active = activeTab === s;

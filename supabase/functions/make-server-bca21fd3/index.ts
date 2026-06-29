@@ -2750,6 +2750,64 @@ app.get('/make-server-bca21fd3/employer/onboarding/status', async (c) => {
   }
 });
 
+// ============== ADMIN STATS ==============
+
+app.get('/make-server-bca21fd3/admin/stats', async (c) => {
+  try {
+    const auth = await requireAdmin(c.req.header('Authorization'), c.req.header('x-rf-user-jwt'));
+    if (!auth.user) return c.json({ error: auth.error }, auth.code);
+
+    const db = getDb();
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    const [
+      { count: employers },
+      { count: seekers },
+      { count: jobs },
+      { count: applications },
+      { count: interviews },
+      { count: aiNotes },
+      { data: recentApps },
+      { data: recentProfiles },
+      { data: allAppsStatus },
+      { data: recentSignups },
+    ] = await Promise.all([
+      db.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'employer'),
+      db.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'seeker'),
+      db.from('jobs').select('id', { count: 'exact', head: true }),
+      db.from('applications').select('id', { count: 'exact', head: true }),
+      db.from('call_recordings').select('id', { count: 'exact', head: true }),
+      db.from('interview_ai_notes').select('id', { count: 'exact', head: true }),
+      db.from('applications').select('created_at').gte('created_at', monthAgo),
+      db.from('profiles').select('created_at, user_type').gte('created_at', monthAgo),
+      db.from('applications').select('status').gte('created_at', monthAgo),
+      db.from('profiles').select('id, name, user_type, created_at, avatar_url').order('created_at', { ascending: false }).limit(6),
+    ]);
+
+    const totalApps = (allAppsStatus?.length || 0);
+    const interviewed = allAppsStatus?.filter((a: any) => ['interview', 'offer', 'hired'].includes(a.status)).length || 0;
+    const offered = allAppsStatus?.filter((a: any) => ['offer', 'hired'].includes(a.status)).length || 0;
+
+    return c.json({
+      employers: employers ?? 0,
+      seekers: seekers ?? 0,
+      jobs: jobs ?? 0,
+      applications: applications ?? 0,
+      interviews: interviews ?? 0,
+      aiNotes: aiNotes ?? 0,
+      appsThisMonth: recentApps?.length ?? 0,
+      signupsThisMonth: recentProfiles?.length ?? 0,
+      interviewRate: totalApps > 0 ? Math.round((interviewed / totalApps) * 100) : 0,
+      offerRate: totalApps > 0 ? Math.round((offered / totalApps) * 100) : 0,
+      recentApps: recentApps ?? [],
+      recentProfiles: recentProfiles ?? [],
+      recentSignups: recentSignups ?? [],
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 // ============== ADMIN ONBOARDING ==============
 
 app.get('/make-server-bca21fd3/admin/onboarding/queue', async (c) => {
