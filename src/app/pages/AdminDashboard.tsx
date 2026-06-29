@@ -129,6 +129,13 @@ export default function AdminDashboard() {
 
   const N = (n: number) => statsLoading ? '—' : n.toLocaleString();
   const P = (n: number) => statsLoading ? '—' : `${n}%`;
+  const allZero = (arr: any[], key: string) => arr.every(d => (d[key] ?? 0) === 0);
+  const NoData = () => (
+    <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontSize: 22 }}>📭</span>
+      <span style={{ fontSize: 12, color: '#9ca3af' }}>No data yet</span>
+    </div>
+  );
 
   const funnelData = [
     { name: 'Applications', value: stats.appsThisMonth },
@@ -150,12 +157,14 @@ export default function AdminDashboard() {
         .rf-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
         .rf-metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
         .rf-chart-row{display:grid;grid-template-columns:1fr 260px;gap:20px;margin-bottom:24px}
+        .rf-chart-row-2col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
         .rf-queue-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
         .rf-hero{background:linear-gradient(135deg,#0A2540 0%,#0d3260 100%);border-radius:16px;padding:24px;margin-bottom:20px;color:#fff}
         @media(max-width:640px){
           .rf-kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px}
           .rf-metrics-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px}
           .rf-chart-row{grid-template-columns:1fr!important}
+          .rf-chart-row-2col{grid-template-columns:1fr!important}
           .rf-queue-tabs{grid-template-columns:repeat(3,1fr)!important;gap:8px}
           .rf-hero{padding:18px 16px!important;border-radius:12px!important}
         }
@@ -181,7 +190,7 @@ export default function AdminDashboard() {
         <div className="rf-kpi-grid">
           {[
             { label: 'Employers',    value: N(stats.employers),    icon: Building2, accent: '#60a5fa' },
-            { label: 'Job Seekers',  value: N(stats.seekers),      icon: Users,     accent: '#00C853' },
+            { label: 'Seeker Profiles', value: N(stats.seekers),   icon: Users,     accent: '#00C853' },
             { label: 'Jobs Posted',  value: N(stats.jobs),         icon: Briefcase, accent: '#f59e0b' },
             { label: 'Applications', value: N(stats.applications), icon: FileText,  accent: '#a78bfa' },
             { label: 'Interviews',   value: N(stats.interviews),   icon: Video,     accent: '#f87171' },
@@ -367,11 +376,13 @@ export default function AdminDashboard() {
       </div>
 
       {/* ═══════════════════ DAILY SIGNUPS + DAILY LOGINS ═══════════════════ */}
-      <div className="rf-chart-row" style={{ marginBottom: 20 }}>
+      <div className="rf-chart-row-2col">
         <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
           <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Daily Signups</p>
           <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>New users per day</p>
-          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div>
+            : allZero(dailyAuth, 'signups') ? <NoData />
+            : (
             <ResponsiveContainer width="100%" height={130}>
               <AreaChart data={dailyAuth} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
                 <defs><linearGradient id="gDS" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#00C853" stopOpacity={0.25}/><stop offset="95%" stopColor="#00C853" stopOpacity={0}/></linearGradient></defs>
@@ -387,7 +398,9 @@ export default function AdminDashboard() {
         <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
           <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Daily Active Logins</p>
           <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>Users by last sign-in date</p>
-          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div>
+            : allZero(dailyAuth, 'logins') ? <NoData />
+            : (
             <ResponsiveContainer width="100%" height={130}>
               <LineChart data={dailyAuth} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -402,11 +415,13 @@ export default function AdminDashboard() {
       </div>
 
       {/* ═══════════════════ WEEKLY SIGNUPS + DAY OF WEEK ═══════════════════ */}
-      <div className="rf-chart-row" style={{ marginBottom: 28 }}>
+      <div className="rf-chart-row-2col" style={{ marginBottom: 20 }}>
         <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
           <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Weekly Signups</p>
           <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>By week starting date</p>
-          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div>
+            : allZero(weeklySignups, 'count') ? <NoData />
+            : (
             <ResponsiveContainer width="100%" height={130}>
               <BarChart data={weeklySignups} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -421,7 +436,9 @@ export default function AdminDashboard() {
         <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
           <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Signups by Day of Week</p>
           <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>All-time totals</p>
-          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div>
+            : allZero(signupsByDow, 'count') ? <NoData />
+            : (
             <ResponsiveContainer width="100%" height={130}>
               <BarChart data={signupsByDow} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -436,7 +453,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* ═══════════════════ AUTH PROVIDER + EMAIL CONFIRMATION ═══════════════════ */}
-      <div className="rf-chart-row" style={{ marginBottom: 28 }}>
+      <div className="rf-chart-row-2col" style={{ marginBottom: 28 }}>
         <div style={{ background: '#0A2540', borderRadius: 16, padding: '20px 24px' }}>
           <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#fff' }}>Auth Provider Split</p>
           <p style={{ margin: '0 0 20px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Email vs Google</p>

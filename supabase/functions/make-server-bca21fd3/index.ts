@@ -2788,6 +2788,61 @@ app.get('/make-server-bca21fd3/admin/stats', async (c) => {
     const interviewed = allAppsStatus?.filter((a: any) => ['interview', 'offer', 'hired'].includes(a.status)).length || 0;
     const offered = allAppsStatus?.filter((a: any) => ['offer', 'hired'].includes(a.status)).length || 0;
 
+    // Auth user stats — paginate to get all users, don't fail the whole endpoint if auth admin is unavailable
+    let authUsers: any[] = [];
+    try {
+      let page = 1;
+      while (true) {
+        const { data: pageData, error: pageErr } = await db.auth.admin.listUsers({ page, perPage: 1000 });
+        if (pageErr || !pageData?.users?.length) break;
+        authUsers.push(...pageData.users);
+        if (!pageData.nextPage) break;
+        page++;
+      }
+    } catch (_) { /* auth admin unavailable — continue with empty list */ }
+
+    const emailConfirmed = authUsers.filter((u: any) => u.email_confirmed_at).length;
+    const unconfirmed = authUsers.filter((u: any) => !u.email_confirmed_at).length;
+    const googleSignins = authUsers.filter((u: any) => u.app_metadata?.provider === 'google').length;
+    const last7DaysSignups = authUsers.filter((u: any) => u.created_at && new Date(u.created_at) >= new Date(Date.now() - 7 * 86400000)).length;
+
+    const now = new Date();
+
+    // Daily signups + logins (30 days)
+    const dailyAuth = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(now); d.setDate(d.getDate() - (29 - i));
+      const dayStr = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
+      return {
+        name: label,
+        signups: authUsers.filter((u: any) => u.created_at?.slice(0, 10) === dayStr).length,
+        logins: authUsers.filter((u: any) => u.last_sign_in_at?.slice(0, 10) === dayStr).length,
+      };
+    });
+
+    // Weekly signups (8 weeks)
+    const weeklySignups = Array.from({ length: 8 }, (_, i) => {
+      const ws = new Date(now); ws.setDate(ws.getDate() - 7 * (7 - i)); ws.setHours(0,0,0,0);
+      const we = new Date(ws); we.setDate(we.getDate() + 7);
+      return {
+        name: ws.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }),
+        count: authUsers.filter((u: any) => { if (!u.created_at) return false; const d = new Date(u.created_at); return d >= ws && d < we; }).length,
+      };
+    });
+
+    // Signups by day of week
+    const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const signupsByDow = dowNames.map((name, i) => ({
+      name,
+      count: authUsers.filter((u: any) => u.created_at && new Date(u.created_at).getDay() === i).length,
+    }));
+
+    // Peak signup day
+    const byDate: Record<string, number> = {};
+    authUsers.forEach((u: any) => { if (u.created_at) { const d = u.created_at.slice(0,10); byDate[d] = (byDate[d]||0)+1; } });
+    const peakEntry = Object.entries(byDate).sort((a,b) => b[1]-a[1])[0];
+    const peakDay = peakEntry ? `${new Date(peakEntry[0]).toLocaleDateString('en-ZA',{day:'numeric',month:'short'})} (${peakEntry[1]})` : 'N/A';
+
     return c.json({
       employers: employers ?? 0,
       seekers: seekers ?? 0,
@@ -2802,6 +2857,17 @@ app.get('/make-server-bca21fd3/admin/stats', async (c) => {
       recentApps: recentApps ?? [],
       recentProfiles: recentProfiles ?? [],
       recentSignups: recentSignups ?? [],
+      // Auth stats
+      totalAuthUsers: authUsers.length,
+      emailConfirmed,
+      unconfirmed,
+      googleSignins,
+      emailSignins: authUsers.length - googleSignins,
+      last7DaysSignups,
+      peakDay,
+      dailyAuth,
+      weeklySignups,
+      signupsByDow,
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
