@@ -6,7 +6,7 @@ import {
   Users, Briefcase, FileText, Video, Building2, Activity, TrendingUp, ArrowUpRight,
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line,
 } from 'recharts';
 
 type QueueItem = {
@@ -78,6 +78,10 @@ export default function AdminDashboard() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [recentSignups, setRecentSignups] = useState<any[]>([]);
+  const [authStats, setAuthStats] = useState({ totalAuthUsers: 0, emailConfirmed: 0, unconfirmed: 0, googleSignins: 0, emailSignins: 0, last7DaysSignups: 0, peakDay: 'N/A' });
+  const [dailyAuth, setDailyAuth] = useState<any[]>([]);
+  const [weeklySignups, setWeeklySignups] = useState<any[]>([]);
+  const [signupsByDow, setSignupsByDow] = useState<any[]>([]);
 
   useEffect(() => { loadQueue(); loadStats(); }, []);
 
@@ -103,6 +107,10 @@ export default function AdminDashboard() {
       });
       setChartData(buildChartData(30, data.recentApps ?? [], data.recentProfiles ?? []));
       setRecentSignups(data.recentSignups ?? []);
+      setAuthStats({ totalAuthUsers: data.totalAuthUsers ?? 0, emailConfirmed: data.emailConfirmed ?? 0, unconfirmed: data.unconfirmed ?? 0, googleSignins: data.googleSignins ?? 0, emailSignins: data.emailSignins ?? 0, last7DaysSignups: data.last7DaysSignups ?? 0, peakDay: data.peakDay ?? 'N/A' });
+      setDailyAuth(data.dailyAuth ?? []);
+      setWeeklySignups(data.weeklySignups ?? []);
+      setSignupsByDow(data.signupsByDow ?? []);
     } catch (err) { console.error(err); }
     finally { setStatsLoading(false); }
   }
@@ -318,107 +326,244 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ═══════════════════ HIRING TRENDS BAR CHART ═══════════════════ */}
-      <div style={{ background: '#fff', borderRadius: 16, padding: '24px 24px 16px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 28 }}>
+      {/* ═══════════════════ HIRING TRENDS ═══════════════════ */}
+      <div style={{ background: '#fff', borderRadius: 16, padding: '24px 24px 16px', border: '1px solid #e5e7eb', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <TrendingUp size={16} color="#00C853" />
-          <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0A2540' }}>Hiring Trends</p>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0A2540' }}>Hiring Trends</p>
         </div>
-        <p style={{ margin: '0 0 20px', fontSize: 12, color: '#9ca3af' }}>Daily application volume over the last 30 days</p>
-        {statsLoading ? (
-          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Loader2 size={24} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={160}>
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9ca3af' }}>Daily application volume — last 30 days</p>
+        {statsLoading ? <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={22} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          <ResponsiveContainer width="100%" height={140}>
             <BarChart data={chartData} margin={{ top: 2, right: 4, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} interval={4} dy={8} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }} />
               <Bar dataKey="apps" name="Applications" fill="#00C853" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
 
+      {/* ═══════════════════ AUTH STATS CARDS ═══════════════════ */}
+      <div style={{ background: 'linear-gradient(135deg,#0A2540 0%,#0d3260 100%)', borderRadius: 16, padding: '20px 24px', marginBottom: 20 }}>
+        <p style={{ margin: '0 0 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#00C853' }}>User Auth Analytics</p>
+        <div className="rf-kpi-grid">
+          {[
+            { label: 'Total Users',    value: N(authStats.totalAuthUsers), accent: '#60a5fa' },
+            { label: 'Email Verified', value: N(authStats.emailConfirmed),  accent: '#00C853' },
+            { label: 'Unconfirmed',    value: N(authStats.unconfirmed),     accent: '#f87171' },
+            { label: 'Google Sign-ins',value: N(authStats.googleSignins),   accent: '#f59e0b' },
+            { label: 'Last 7 Days',    value: N(authStats.last7DaysSignups),accent: '#a78bfa' },
+            { label: 'Peak Day',       value: statsLoading ? '—' : authStats.peakDay, accent: '#34d399' },
+          ].map(({ label, value, accent }) => (
+            <div key={label} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '14px' }}>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.5px' }}>{value}</p>
+              <p style={{ margin: '5px 0 0', fontSize: 10, color: accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══════════════════ DAILY SIGNUPS + DAILY LOGINS ═══════════════════ */}
+      <div className="rf-chart-row" style={{ marginBottom: 20 }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
+          <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Daily Signups</p>
+          <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>New users per day</p>
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <ResponsiveContainer width="100%" height={130}>
+              <AreaChart data={dailyAuth} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+                <defs><linearGradient id="gDS" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#00C853" stopOpacity={0.25}/><stop offset="95%" stopColor="#00C853" stopOpacity={0}/></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} interval={4} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }} />
+                <Area type="monotone" dataKey="signups" name="Signups" stroke="#00C853" strokeWidth={2} fill="url(#gDS)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
+          <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Daily Active Logins</p>
+          <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>Users by last sign-in date</p>
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <ResponsiveContainer width="100%" height={130}>
+              <LineChart data={dailyAuth} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} interval={4} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }} />
+                <Line type="monotone" dataKey="logins" name="Logins" stroke="#0A2540" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ═══════════════════ WEEKLY SIGNUPS + DAY OF WEEK ═══════════════════ */}
+      <div className="rf-chart-row" style={{ marginBottom: 28 }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
+          <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Weekly Signups</p>
+          <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>By week starting date</p>
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={weeklySignups} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }} />
+                <Bar dataKey="count" name="Signups" fill="#0A2540" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 12px', border: '1px solid #e5e7eb' }}>
+          <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: '#0A2540' }}>Signups by Day of Week</p>
+          <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9ca3af' }}>All-time totals</p>
+          {statsLoading ? <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={signupsByDow} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 9 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }} />
+                <Bar dataKey="count" name="Signups" fill="#00C853" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ═══════════════════ AUTH PROVIDER + EMAIL CONFIRMATION ═══════════════════ */}
+      <div className="rf-chart-row" style={{ marginBottom: 28 }}>
+        <div style={{ background: '#0A2540', borderRadius: 16, padding: '20px 24px' }}>
+          <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#fff' }}>Auth Provider Split</p>
+          <p style={{ margin: '0 0 20px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Email vs Google</p>
+          {statsLoading ? <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#00C853" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <div>
+              {[
+                { label: 'Email', value: authStats.emailSignins, color: '#60a5fa' },
+                { label: 'Google', value: authStats.googleSignins, color: '#f59e0b' },
+              ].map(row => {
+                const pct = authStats.totalAuthUsers > 0 ? Math.round((row.value / authStats.totalAuthUsers) * 100) : 0;
+                return (
+                  <div key={row.label} style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{row.label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: row.color }}>{row.value} <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>({pct}%)</span></span>
+                    </div>
+                    <div style={{ height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 4 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: row.color, borderRadius: 4, transition: 'width 0.8s ease' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div style={{ background: '#0A2540', borderRadius: 16, padding: '20px 24px' }}>
+          <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#fff' }}>Email Confirmation</p>
+          <p style={{ margin: '0 0 20px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Verification status</p>
+          {statsLoading ? <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 size={20} color="#00C853" style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+            <div>
+              {[
+                { label: 'Confirmed', value: authStats.emailConfirmed, color: '#00C853' },
+                { label: 'Unconfirmed', value: authStats.unconfirmed, color: '#f87171' },
+              ].map(row => {
+                const pct = authStats.totalAuthUsers > 0 ? Math.round((row.value / authStats.totalAuthUsers) * 100) : 0;
+                return (
+                  <div key={row.label} style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{row.label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: row.color }}>{row.value} <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>({pct}%)</span></span>
+                    </div>
+                    <div style={{ height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 4 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: row.color, borderRadius: 4, transition: 'width 0.8s ease' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ═══════════════════ ONBOARDING QUEUE ═══════════════════ */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-          <Building2 size={18} color="#0A2540" />
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0A2540' }}>Employer Onboarding Queue</h2>
+      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ background: '#0A2540', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Building2 size={18} color="#00C853" />
+            <div>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff' }}>Employer Onboarding Queue</p>
+              <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Review and manage employer accounts</p>
+            </div>
+          </div>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search name or email…"
+            style={{ height: 34, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '0 12px', fontSize: 12, outline: 'none', width: 200, color: '#fff' }}
+          />
         </div>
 
         {/* Status tabs */}
-        <div className="rf-queue-tabs">
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', overflowX: 'auto' }}>
           {ALL_STATUSES.map(s => {
             const cfg = STATUS_CONFIG[s];
+            const { Icon } = cfg;
             const active = activeTab === s;
+            const count = queueLoading ? '…' : queueStats[s];
             return (
-              <button
-                key={s}
-                onClick={() => setActiveTab(s)}
-                style={{ background: active ? '#0A2540' : '#fff', border: `1px solid ${active ? '#0A2540' : '#e5e7eb'}`, borderRadius: 12, padding: '14px 16px', textAlign: 'left', cursor: 'pointer', transition: 'all 0.15s' }}
-              >
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: active ? 'rgba(255,255,255,0.5)' : '#9ca3af' }}>{cfg.label}</p>
-                <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: active ? '#fff' : '#0A2540' }}>{queueLoading ? '…' : queueStats[s]}</p>
+              <button key={s} onClick={() => setActiveTab(s)}
+                style={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '14px 12px', border: 'none', borderBottom: `3px solid ${active ? cfg.color : 'transparent'}`, background: active ? cfg.bg : '#fff', cursor: 'pointer', transition: 'all 0.15s', minWidth: 90 }}>
+                <Icon size={14} color={active ? cfg.color : '#9ca3af'} />
+                <span style={{ fontSize: 18, fontWeight: 800, color: active ? cfg.color : '#0A2540' }}>{count}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: active ? cfg.color : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cfg.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Table */}
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f3f4f6', flexWrap: 'wrap', gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0A2540' }}>
-              {STATUS_CONFIG[activeTab].label} Accounts
-              <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#9ca3af' }}>({queueLoading ? '…' : tabRows.length})</span>
-            </p>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name or email…"
-              style={{ height: 36, border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 13, outline: 'none', width: 220, color: '#0A2540' }}
-            />
+        {/* Rows */}
+        {queueLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+            <Loader2 size={24} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
           </div>
-
-          {queueLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
-              <Loader2 size={24} color="#0A2540" style={{ animation: 'spin 1s linear infinite' }} />
-            </div>
-          ) : tabRows.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: 13 }}>
-              No {STATUS_CONFIG[activeTab].label.toLowerCase()} accounts found.
-            </div>
-          ) : (
-            tabRows.map(row => (
-              <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '14px 20px', borderBottom: '1px solid #f9fafb' }}
+        ) : tabRows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <CheckCircle2 size={32} color="#e5e7eb" style={{ margin: '0 auto 12px' }} />
+            <p style={{ margin: 0, color: '#9ca3af', fontSize: 13 }}>No {STATUS_CONFIG[activeTab].label.toLowerCase()} accounts</p>
+          </div>
+        ) : (
+          tabRows.map((row, idx) => {
+            const cfg = STATUS_CONFIG[row.status];
+            return (
+              <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 20px', borderBottom: idx < tabRows.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background 0.1s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{(row.employer_name || '?')[0].toUpperCase()}</span>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: cfg.bg, border: `2px solid ${cfg.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ color: cfg.color, fontSize: 13, fontWeight: 800 }}>{(row.employer_name || '?')[0].toUpperCase()}</span>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0A2540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_name || 'Unknown'}</p>
-                    <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_email || 'No email'}</p>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0A2540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_name || 'Unknown'}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.employer_email || 'No email'}</p>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                   <StatusBadge status={row.status} />
-                  <span style={{ fontSize: 12, color: '#9ca3af' }}>{row.age_hours ?? 0}h ago</span>
-                  <button
-                    onClick={() => navigate('/admin/onboarding')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#0A2540', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    Review <ChevronRight size={12} />
+                  <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>{row.age_hours ?? 0}h</span>
+                  <button onClick={() => navigate('/admin/onboarding')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 10px', background: '#0A2540', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Review <ChevronRight size={11} />
                   </button>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
