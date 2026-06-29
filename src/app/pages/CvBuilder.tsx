@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Sparkles, Loader2, Plus, Trash2, Download, Save, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
-import { supabase, apiCall } from '../lib/supabase';
+import { apiCall } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 
@@ -269,16 +269,18 @@ export default function CvBuilder() {
     setSaving(true);
     try {
       const skillsArr = cv.skills.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
-      const { error } = await supabase.from('profiles').update({
-        name:     `${cv.firstName} ${cv.lastName}`.trim(),
-        headline: cv.targetRole || undefined,
-        summary:  cv.summary || undefined,
-        skills:   skillsArr,
-        phone:    cv.phone || undefined,
-        location: cv.location || undefined,
-        updated_at: new Date().toISOString(),
-      }).eq('id', profile?.id);
-      if (error) throw error;
+      await apiCall('/auth/profile', {
+        method: 'PUT',
+        requireAuth: true,
+        body: JSON.stringify({
+          name:     `${cv.firstName} ${cv.lastName}`.trim(),
+          headline: cv.targetRole || undefined,
+          summary:  cv.summary || undefined,
+          skills:   skillsArr,
+          phone:    cv.phone || undefined,
+          location: cv.location || undefined,
+        }),
+      });
       toast.success('CV saved to your profile!');
     } catch (err: any) {
       toast.error('Failed to save: ' + (err?.message || 'Unknown error'));
@@ -295,16 +297,20 @@ export default function CvBuilder() {
         @page { size: A4; margin: 12mm; }
         body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       </style>
-      </head><body>${html}
-      <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
-      </body></html>`;
-    const blob = new Blob([fullHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const popup = window.open(url, '_blank', 'width=900,height=1100');
-    if (!popup) {
-      toast.error('Allow pop-ups to download your CV as PDF.');
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+      </head><body>${html}</body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) { toast.error('Could not open print dialog. Please try again.'); return; }
+    doc.open(); doc.write(fullHtml); doc.close();
+
+    setTimeout(() => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); } catch {}
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 5000);
+    }, 400);
   }
 
   const AiBtn = ({ onClick, label }: { onClick: () => void; label: string }) => (
