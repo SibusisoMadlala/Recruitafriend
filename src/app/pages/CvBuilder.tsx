@@ -17,8 +17,6 @@ type CvData = {
   phone:           string;
   location:        string;
   linkedin:        string;
-  dob:             string;
-  nationality:     string;
   gender:          string;
   driversLicense:  string;
   summary:         string;
@@ -90,15 +88,11 @@ function buildCvHtml(cv: CvData): string {
     items.map(s => `<span class="tag">${s}</span>`).join('');
 
   const personalRows = [
-    cv.dob            && `<div class="contact-item">DOB: ${cv.dob}</div>`,
-    cv.nationality    && `<div class="contact-item">Nationality: ${cv.nationality}</div>`,
     cv.gender         && `<div class="contact-item">Gender: ${cv.gender}</div>`,
     cv.driversLicense && `<div class="contact-item">Driver's Licence: ${cv.driversLicense}</div>`,
   ].filter(Boolean).join('');
 
   const personalRowsInline = [
-    cv.dob            && `<span>DOB: ${cv.dob}</span>`,
-    cv.nationality    && `<span>Nationality: ${cv.nationality}</span>`,
     cv.gender         && `<span>Gender: ${cv.gender}</span>`,
     cv.driversLicense && `<span>Driver's Licence: ${cv.driversLicense}</span>`,
   ].filter(Boolean).join('');
@@ -255,8 +249,6 @@ export default function CvBuilder() {
     phone:          profile?.phone || '',
     location:       profile?.location || '',
     linkedin:       '',
-    dob:            '',
-    nationality:    'South African',
     gender:         '',
     driversLicense: '',
     summary:        profile?.summary || '',
@@ -409,14 +401,6 @@ export default function CvBuilder() {
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SA Personal Details</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelCls}>Date of Birth</label>
-                <input value={cv.dob} onChange={e => set('dob', e.target.value)} className={inputCls} placeholder="01 January 1980" />
-              </div>
-              <div>
-                <label className={labelCls}>Nationality</label>
-                <input value={cv.nationality} onChange={e => set('nationality', e.target.value)} className={inputCls} placeholder="South African" />
-              </div>
               <div>
                 <label className={labelCls}>Gender</label>
                 <select value={cv.gender} onChange={e => set('gender', e.target.value)} className={inputCls}>
