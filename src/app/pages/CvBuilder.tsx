@@ -30,10 +30,10 @@ type CvData = {
   template:        'modern-blue' | 'executive' | 'minimal';
 };
 
-const TEMPLATES: { id: CvData['template']; label: string; desc: string }[] = [
-  { id: 'modern-blue', label: 'Modern Blue Professional', desc: 'Clean blue sidebar layout' },
-  { id: 'executive',   label: 'Executive Corporate',      desc: 'Bold header, formal styling' },
-  { id: 'minimal',     label: 'Minimal Black & White',    desc: 'Clean, ATS-friendly layout' },
+const TEMPLATES: { id: CvData['template']; label: string; desc: string; ats: string }[] = [
+  { id: 'modern-blue', label: 'Modern Blue Professional', desc: 'Blue sidebar — great for human recruiters', ats: '⚠ Moderate ATS' },
+  { id: 'executive',   label: 'Executive Corporate',      desc: 'Formal single-column, serif font',         ats: '✓ ATS Safe' },
+  { id: 'minimal',     label: 'Minimal Black & White',    desc: 'Clean, simple — best for ATS screening',   ats: '✓✓ Best for ATS' },
 ];
 
 const TARGET_ROLES = [
@@ -98,7 +98,7 @@ function buildCvHtml(cv: CvData): string {
   ].filter(Boolean).join('');
 
   if (cv.template === 'modern-blue') {
-    return `<html><head><meta charset="utf-8"><style>
+    return `<html lang="en"><head><meta charset="utf-8"><style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:Arial,sans-serif;font-size:13px;color:#111;display:flex;min-height:100vh}
       .sidebar{width:210px;background:#0A2540;color:#fff;padding:28px 20px;flex-shrink:0}
@@ -125,14 +125,14 @@ function buildCvHtml(cv: CvData): string {
       ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
       <div class="sidebar-section">
         <div class="sidebar-section-title">Contact</div>
-        ${cv.email    ? `<div class="contact-item">✉ ${cv.email}</div>`    : ''}
-        ${cv.phone    ? `<div class="contact-item">📞 ${cv.phone}</div>`   : ''}
-        ${cv.location ? `<div class="contact-item">📍 ${cv.location}</div>` : ''}
-        ${cv.linkedin ? `<div class="contact-item">in ${cv.linkedin}</div>` : ''}
+        ${cv.email    ? `<div class="contact-item">Email: ${cv.email}</div>`    : ''}
+        ${cv.phone    ? `<div class="contact-item">Tel: ${cv.phone}</div>`   : ''}
+        ${cv.location ? `<div class="contact-item">Location: ${cv.location}</div>` : ''}
+        ${cv.linkedin ? `<div class="contact-item">LinkedIn: ${cv.linkedin}</div>` : ''}
       </div>
       ${personalRows ? `<div class="sidebar-section"><div class="sidebar-section-title">Personal Details</div>${personalRows}</div>` : ''}
       ${langList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Languages</div>${langList.map(s=>`<span class="tag-sidebar">${s}</span>`).join('')}</div>` : ''}
-      ${certList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Certifications</div>${certList.map(s=>`<div class="contact-item">• ${s}</div>`).join('')}</div>` : ''}
+      ${certList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Certifications</div>${certList.map(s=>`<div class="contact-item">- ${s}</div>`).join('')}</div>` : ''}
     </div>
     <div class="main">
       ${cv.summary ? sec('Professional Summary', `<p class="summary-text">${cv.summary}</p>`) : ''}
@@ -145,7 +145,7 @@ function buildCvHtml(cv: CvData): string {
   }
 
   if (cv.template === 'executive') {
-    return `<html><head><meta charset="utf-8"><style>
+    return `<html lang="en"><head><meta charset="utf-8"><style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:Georgia,serif;font-size:13px;color:#111;padding:40px;max-width:800px}
       .header{text-align:center;border-bottom:3px double #111;padding-bottom:20px;margin-bottom:24px}
@@ -168,10 +168,10 @@ function buildCvHtml(cv: CvData): string {
       <h1>${fullName || 'Your Name'}</h1>
       ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
       <div class="contact">
-        ${cv.email    ? `<span>✉ ${cv.email}</span>`    : ''}
-        ${cv.phone    ? `<span>📞 ${cv.phone}</span>`   : ''}
-        ${cv.location ? `<span>📍 ${cv.location}</span>` : ''}
-        ${cv.linkedin ? `<span>in ${cv.linkedin}</span>` : ''}
+        ${cv.email    ? `<span>Email: ${cv.email}</span>`    : ''}
+        ${cv.phone    ? `<span>Tel: ${cv.phone}</span>`   : ''}
+        ${cv.location ? `<span>Location: ${cv.location}</span>` : ''}
+        ${cv.linkedin ? `<span>LinkedIn: ${cv.linkedin}</span>` : ''}
       </div>
       ${personalRowsInline ? `<div class="personal-row">${personalRowsInline}</div>` : ''}
     </div>
@@ -187,7 +187,7 @@ function buildCvHtml(cv: CvData): string {
   }
 
   // minimal
-  return `<html><head><meta charset="utf-8"><style>
+  return `<html lang="en"><head><meta charset="utf-8"><style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:36px;max-width:780px}
     h1{font-size:22px;font-weight:800;margin-bottom:2px}
@@ -209,10 +209,10 @@ function buildCvHtml(cv: CvData): string {
   <h1>${fullName || 'Your Name'}</h1>
   ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
   <div class="contact">
-    ${cv.email    ? `<span>✉ ${cv.email}</span>`    : ''}
-    ${cv.phone    ? `<span>📞 ${cv.phone}</span>`   : ''}
-    ${cv.location ? `<span>📍 ${cv.location}</span>` : ''}
-    ${cv.linkedin ? `<span>in ${cv.linkedin}</span>` : ''}
+    ${cv.email    ? `<span>Email: ${cv.email}</span>`    : ''}
+    ${cv.phone    ? `<span>Tel: ${cv.phone}</span>`   : ''}
+    ${cv.location ? `<span>Location: ${cv.location}</span>` : ''}
+    ${cv.linkedin ? `<span>LinkedIn: ${cv.linkedin}</span>` : ''}
   </div>
   <div class="personal">
     ${personalRowsInline || '&nbsp;'}
@@ -381,6 +381,7 @@ export default function CvBuilder() {
                   </div>
                   <p className="font-semibold text-sm text-[#0A2540]">{t.label}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
+                  <p className={`text-xs mt-1.5 font-semibold ${t.id === 'modern-blue' ? 'text-amber-500' : 'text-green-600'}`}>{t.ats}</p>
                 </button>
               ))}
             </div>
