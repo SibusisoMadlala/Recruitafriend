@@ -17,7 +17,6 @@ type CvData = {
   phone:           string;
   location:        string;
   linkedin:        string;
-  idNumber:        string;
   dob:             string;
   nationality:     string;
   gender:          string;
@@ -91,7 +90,6 @@ function buildCvHtml(cv: CvData): string {
     items.map(s => `<span class="tag">${s}</span>`).join('');
 
   const personalRows = [
-    cv.idNumber       && `<div class="contact-item">ID: ${cv.idNumber}</div>`,
     cv.dob            && `<div class="contact-item">DOB: ${cv.dob}</div>`,
     cv.nationality    && `<div class="contact-item">Nationality: ${cv.nationality}</div>`,
     cv.gender         && `<div class="contact-item">Gender: ${cv.gender}</div>`,
@@ -99,7 +97,6 @@ function buildCvHtml(cv: CvData): string {
   ].filter(Boolean).join('');
 
   const personalRowsInline = [
-    cv.idNumber       && `<span>ID: ${cv.idNumber}</span>`,
     cv.dob            && `<span>DOB: ${cv.dob}</span>`,
     cv.nationality    && `<span>Nationality: ${cv.nationality}</span>`,
     cv.gender         && `<span>Gender: ${cv.gender}</span>`,
@@ -258,7 +255,6 @@ export default function CvBuilder() {
     phone:          profile?.phone || '',
     location:       profile?.location || '',
     linkedin:       '',
-    idNumber:       '',
     dob:            '',
     nationality:    'South African',
     gender:         '',
@@ -413,10 +409,6 @@ export default function CvBuilder() {
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SA Personal Details</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelCls}>ID Number</label>
-                <input value={cv.idNumber} onChange={e => set('idNumber', e.target.value)} className={inputCls} placeholder="8001015009087" maxLength={13} />
-              </div>
               <div>
                 <label className={labelCls}>Date of Birth</label>
                 <input value={cv.dob} onChange={e => set('dob', e.target.value)} className={inputCls} placeholder="01 January 1980" />
