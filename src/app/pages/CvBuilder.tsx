@@ -10,21 +10,27 @@ type EduEntry   = { institution: string; qualification: string; year: string };
 type RefEntry   = { name: string; company: string; phone: string; email: string };
 
 type CvData = {
-  targetRole:    string;
-  firstName:     string;
-  lastName:      string;
-  email:         string;
-  phone:         string;
-  location:      string;
-  linkedin:      string;
-  summary:       string;
-  work:          WorkEntry[];
-  education:     EduEntry[];
-  skills:        string;
-  certifications:string;
-  languages:     string;
-  references:    RefEntry[];
-  template:      'modern-blue' | 'executive' | 'minimal';
+  targetRole:      string;
+  firstName:       string;
+  lastName:        string;
+  email:           string;
+  phone:           string;
+  location:        string;
+  linkedin:        string;
+  idNumber:        string;
+  dob:             string;
+  nationality:     string;
+  gender:          string;
+  driversLicense:  string;
+  summary:         string;
+  work:            WorkEntry[];
+  education:       EduEntry[];
+  tertiary:        EduEntry[];
+  skills:          string;
+  certifications:  string;
+  languages:       string;
+  references:      RefEntry[];
+  template:        'modern-blue' | 'executive' | 'minimal';
 };
 
 const TEMPLATES: { id: CvData['template']; label: string; desc: string }[] = [
@@ -52,6 +58,15 @@ function buildCvHtml(cv: CvData): string {
   const sec = (title: string, body: string) =>
     `<div class="section"><div class="section-title">${title}</div>${body}</div>`;
 
+  const entryRows = (entries: EduEntry[]) => entries.map(e => `
+    <div class="entry">
+      <div class="entry-header">
+        <strong>${e.qualification}</strong>
+        <span class="entry-date">${e.year}</span>
+      </div>
+      <div class="entry-sub">${e.institution}</div>
+    </div>`).join('');
+
   const workHtml = cv.work.map(w => `
     <div class="entry">
       <div class="entry-header">
@@ -60,15 +75,6 @@ function buildCvHtml(cv: CvData): string {
       </div>
       <div class="entry-sub">${w.company}</div>
       ${w.description ? `<p class="entry-desc">${w.description.replace(/\n/g, '<br>')}</p>` : ''}
-    </div>`).join('');
-
-  const eduHtml = cv.education.map(e => `
-    <div class="entry">
-      <div class="entry-header">
-        <strong>${e.qualification}</strong>
-        <span class="entry-date">${e.year}</span>
-      </div>
-      <div class="entry-sub">${e.institution}</div>
     </div>`).join('');
 
   const refHtml = cv.references.length
@@ -84,11 +90,27 @@ function buildCvHtml(cv: CvData): string {
   const tagsHtml = (items: string[]) =>
     items.map(s => `<span class="tag">${s}</span>`).join('');
 
+  const personalRows = [
+    cv.idNumber       && `<div class="contact-item">ID: ${cv.idNumber}</div>`,
+    cv.dob            && `<div class="contact-item">DOB: ${cv.dob}</div>`,
+    cv.nationality    && `<div class="contact-item">Nationality: ${cv.nationality}</div>`,
+    cv.gender         && `<div class="contact-item">Gender: ${cv.gender}</div>`,
+    cv.driversLicense && `<div class="contact-item">Driver's Licence: ${cv.driversLicense}</div>`,
+  ].filter(Boolean).join('');
+
+  const personalRowsInline = [
+    cv.idNumber       && `<span>ID: ${cv.idNumber}</span>`,
+    cv.dob            && `<span>DOB: ${cv.dob}</span>`,
+    cv.nationality    && `<span>Nationality: ${cv.nationality}</span>`,
+    cv.gender         && `<span>Gender: ${cv.gender}</span>`,
+    cv.driversLicense && `<span>Driver's Licence: ${cv.driversLicense}</span>`,
+  ].filter(Boolean).join('');
+
   if (cv.template === 'modern-blue') {
     return `<html><head><meta charset="utf-8"><style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:Arial,sans-serif;font-size:13px;color:#111;display:flex;min-height:100vh}
-      .sidebar{width:220px;background:#0A2540;color:#fff;padding:28px 20px;flex-shrink:0}
+      .sidebar{width:210px;background:#0A2540;color:#fff;padding:28px 20px;flex-shrink:0}
       .sidebar h1{font-size:18px;font-weight:800;line-height:1.3;margin-bottom:4px;color:#fff}
       .sidebar .role{font-size:11px;color:#93c5fd;margin-bottom:20px}
       .sidebar .contact-item{font-size:11px;color:#cbd5e1;margin-bottom:6px;word-break:break-all}
@@ -96,7 +118,6 @@ function buildCvHtml(cv: CvData): string {
       .sidebar-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#93c5fd;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:4px}
       .tag-sidebar{display:inline-block;background:rgba(255,255,255,0.1);color:#e2e8f0;border-radius:4px;padding:2px 8px;font-size:10px;margin:2px}
       .main{flex:1;padding:32px 28px}
-      .name-block{margin-bottom:24px;border-bottom:3px solid #0A2540;padding-bottom:16px}
       .section{margin-bottom:22px}
       .section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0A2540;border-bottom:2px solid #dbeafe;padding-bottom:4px;margin-bottom:10px}
       .entry{margin-bottom:12px}
@@ -105,6 +126,7 @@ function buildCvHtml(cv: CvData): string {
       .entry-sub{font-size:11px;color:#6b7280;margin:2px 0}
       .entry-desc{font-size:12px;color:#374151;margin-top:5px;line-height:1.6}
       .summary-text{font-size:13px;color:#374151;line-height:1.8}
+      .tag{display:inline-block;background:#eff6ff;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:11px;margin:2px}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sidebar{background:#0A2540!important}}
     </style></head><body>
     <div class="sidebar">
@@ -112,19 +134,21 @@ function buildCvHtml(cv: CvData): string {
       ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
       <div class="sidebar-section">
         <div class="sidebar-section-title">Contact</div>
-        ${cv.email ? `<div class="contact-item">✉ ${cv.email}</div>` : ''}
-        ${cv.phone ? `<div class="contact-item">📞 ${cv.phone}</div>` : ''}
+        ${cv.email    ? `<div class="contact-item">✉ ${cv.email}</div>`    : ''}
+        ${cv.phone    ? `<div class="contact-item">📞 ${cv.phone}</div>`   : ''}
         ${cv.location ? `<div class="contact-item">📍 ${cv.location}</div>` : ''}
         ${cv.linkedin ? `<div class="contact-item">in ${cv.linkedin}</div>` : ''}
       </div>
-      ${skillList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Skills</div>${skillList.map(s=>`<span class="tag-sidebar">${s}</span>`).join('')}</div>` : ''}
+      ${personalRows ? `<div class="sidebar-section"><div class="sidebar-section-title">Personal Details</div>${personalRows}</div>` : ''}
       ${langList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Languages</div>${langList.map(s=>`<span class="tag-sidebar">${s}</span>`).join('')}</div>` : ''}
       ${certList.length ? `<div class="sidebar-section"><div class="sidebar-section-title">Certifications</div>${certList.map(s=>`<div class="contact-item">• ${s}</div>`).join('')}</div>` : ''}
     </div>
     <div class="main">
       ${cv.summary ? sec('Professional Summary', `<p class="summary-text">${cv.summary}</p>`) : ''}
       ${cv.work.length ? sec('Work Experience', workHtml) : ''}
-      ${cv.education.length ? sec('Education', eduHtml) : ''}
+      ${cv.education.length ? sec('Secondary Education', entryRows(cv.education)) : ''}
+      ${cv.tertiary.length  ? sec('Tertiary Education',  entryRows(cv.tertiary))  : ''}
+      ${skillList.length    ? sec('Skills', `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(skillList)}</div>`) : ''}
       ${sec('References', refHtml)}
     </div></body></html>`;
   }
@@ -136,7 +160,8 @@ function buildCvHtml(cv: CvData): string {
       .header{text-align:center;border-bottom:3px double #111;padding-bottom:20px;margin-bottom:24px}
       .header h1{font-size:26px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
       .header .role{font-size:14px;color:#555;letter-spacing:.05em;margin-bottom:10px}
-      .header .contact{font-size:11px;color:#555;display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+      .header .contact{font-size:11px;color:#555;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+      .personal-row{font-size:11px;color:#555;display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
       .section{margin-bottom:22px}
       .section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;border-bottom:1.5px solid #111;padding-bottom:4px;margin-bottom:10px}
       .entry{margin-bottom:12px}
@@ -152,18 +177,20 @@ function buildCvHtml(cv: CvData): string {
       <h1>${fullName || 'Your Name'}</h1>
       ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
       <div class="contact">
-        ${cv.email ? `<span>✉ ${cv.email}</span>` : ''}
-        ${cv.phone ? `<span>📞 ${cv.phone}</span>` : ''}
+        ${cv.email    ? `<span>✉ ${cv.email}</span>`    : ''}
+        ${cv.phone    ? `<span>📞 ${cv.phone}</span>`   : ''}
         ${cv.location ? `<span>📍 ${cv.location}</span>` : ''}
         ${cv.linkedin ? `<span>in ${cv.linkedin}</span>` : ''}
       </div>
+      ${personalRowsInline ? `<div class="personal-row">${personalRowsInline}</div>` : ''}
     </div>
-    ${cv.summary ? sec('Professional Summary', `<p class="summary-text">${cv.summary}</p>`) : ''}
+    ${cv.summary    ? sec('Professional Summary',    `<p class="summary-text">${cv.summary}</p>`) : ''}
     ${cv.work.length ? sec('Professional Experience', workHtml) : ''}
-    ${cv.education.length ? sec('Education & Qualifications', eduHtml) : ''}
-    ${skillList.length ? sec('Core Skills', `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(skillList)}</div>`) : ''}
-    ${certList.length ? sec('Certifications', `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(certList)}</div>`) : ''}
-    ${langList.length ? sec('Languages', `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(langList)}</div>`) : ''}
+    ${cv.education.length ? sec('Secondary Education',    entryRows(cv.education)) : ''}
+    ${cv.tertiary.length  ? sec('Tertiary Education',     entryRows(cv.tertiary))  : ''}
+    ${skillList.length    ? sec('Core Skills',            `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(skillList)}</div>`) : ''}
+    ${certList.length     ? sec('Certifications',         `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(certList)}</div>`) : ''}
+    ${langList.length     ? sec('Languages',              `<div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml(langList)}</div>`) : ''}
     ${sec('References', refHtml)}
     </body></html>`;
   }
@@ -174,7 +201,8 @@ function buildCvHtml(cv: CvData): string {
     body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:36px;max-width:780px}
     h1{font-size:22px;font-weight:800;margin-bottom:2px}
     .role{font-size:13px;color:#555;margin-bottom:8px}
-    .contact{font-size:11px;color:#555;display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #111}
+    .contact{font-size:11px;color:#555;display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;padding-bottom:6px}
+    .personal{font-size:11px;color:#555;display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:2px solid #111}
     .section{margin-bottom:18px}
     .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#111;margin-bottom:8px;border-bottom:1px solid #ccc;padding-bottom:3px}
     .entry{margin-bottom:10px}
@@ -190,17 +218,21 @@ function buildCvHtml(cv: CvData): string {
   <h1>${fullName || 'Your Name'}</h1>
   ${cv.targetRole ? `<div class="role">${cv.targetRole}</div>` : ''}
   <div class="contact">
-    ${cv.email ? `<span>✉ ${cv.email}</span>` : ''}
-    ${cv.phone ? `<span>📞 ${cv.phone}</span>` : ''}
+    ${cv.email    ? `<span>✉ ${cv.email}</span>`    : ''}
+    ${cv.phone    ? `<span>📞 ${cv.phone}</span>`   : ''}
     ${cv.location ? `<span>📍 ${cv.location}</span>` : ''}
     ${cv.linkedin ? `<span>in ${cv.linkedin}</span>` : ''}
   </div>
-  ${cv.summary ? sec('Summary', `<p class="summary-text">${cv.summary}</p>`) : ''}
-  ${cv.work.length ? sec('Experience', workHtml) : ''}
-  ${cv.education.length ? sec('Education', eduHtml) : ''}
-  ${skillList.length ? sec('Skills', `<div class="tags">${tagsHtml(skillList)}</div>`) : ''}
-  ${certList.length ? sec('Certifications', `<div class="tags">${tagsHtml(certList)}</div>`) : ''}
-  ${langList.length ? sec('Languages', `<div class="tags">${tagsHtml(langList)}</div>`) : ''}
+  <div class="personal">
+    ${personalRowsInline || '&nbsp;'}
+  </div>
+  ${cv.summary       ? sec('Summary',             `<p class="summary-text">${cv.summary}</p>`) : ''}
+  ${cv.work.length   ? sec('Experience',           workHtml) : ''}
+  ${cv.education.length ? sec('Secondary Education', entryRows(cv.education)) : ''}
+  ${cv.tertiary.length  ? sec('Tertiary Education',  entryRows(cv.tertiary))  : ''}
+  ${skillList.length    ? sec('Skills',              `<div class="tags">${tagsHtml(skillList)}</div>`) : ''}
+  ${certList.length     ? sec('Certifications',      `<div class="tags">${tagsHtml(certList)}</div>`) : ''}
+  ${langList.length     ? sec('Languages',           `<div class="tags">${tagsHtml(langList)}</div>`) : ''}
   ${sec('References', refHtml)}
   </body></html>`;
 }
@@ -219,21 +251,27 @@ export default function CvBuilder() {
   const [saving, setSaving]           = useState(false);
 
   const [cv, setCv] = useState<CvData>({
-    targetRole: '',
-    firstName:  profile?.name?.split(' ')[0] || '',
-    lastName:   profile?.name?.split(' ').slice(1).join(' ') || '',
-    email:      profile?.email || '',
-    phone:      profile?.phone || '',
-    location:   profile?.location || '',
-    linkedin:   '',
-    summary:    profile?.summary || '',
-    work:       [emptyWork()],
-    education:  [emptyEdu()],
-    skills:     Array.isArray(profile?.skills) ? (profile.skills as string[]).join(', ') : '',
+    targetRole:     '',
+    firstName:      profile?.name?.split(' ')[0] || '',
+    lastName:       profile?.name?.split(' ').slice(1).join(' ') || '',
+    email:          profile?.email || '',
+    phone:          profile?.phone || '',
+    location:       profile?.location || '',
+    linkedin:       '',
+    idNumber:       '',
+    dob:            '',
+    nationality:    'South African',
+    gender:         '',
+    driversLicense: '',
+    summary:        profile?.summary || '',
+    work:           [emptyWork()],
+    education:      [emptyEdu()],
+    tertiary:       [],
+    skills:         Array.isArray(profile?.skills) ? (profile.skills as string[]).join(', ') : '',
     certifications: '',
-    languages:  '',
-    references: [],
-    template:   'modern-blue',
+    languages:      '',
+    references:     [],
+    template:       'modern-blue',
   });
 
   const set = useCallback(<K extends keyof CvData>(key: K, value: CvData[K]) => {
@@ -363,13 +401,43 @@ export default function CvBuilder() {
       );
 
       case 1: return (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {[['First Name','firstName'],['Last Name','lastName'],['Email','email'],['Phone','phone'],['Location','location'],['LinkedIn URL','linkedin']].map(([label, key]) => (
-            <div key={key}>
-              <label className={labelCls}>{label}</label>
-              <input value={(cv as any)[key]} onChange={e => set(key as keyof CvData, e.target.value as any)} className={inputCls} placeholder={label} />
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[['First Name','firstName'],['Last Name','lastName'],['Email','email'],['Phone','phone'],['Location (City, Province)','location'],['LinkedIn URL','linkedin']].map(([label, key]) => (
+              <div key={key}>
+                <label className={labelCls}>{label}</label>
+                <input value={(cv as any)[key]} onChange={e => set(key as keyof CvData, e.target.value as any)} className={inputCls} placeholder={label} />
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SA Personal Details</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>ID Number</label>
+                <input value={cv.idNumber} onChange={e => set('idNumber', e.target.value)} className={inputCls} placeholder="8001015009087" maxLength={13} />
+              </div>
+              <div>
+                <label className={labelCls}>Date of Birth</label>
+                <input value={cv.dob} onChange={e => set('dob', e.target.value)} className={inputCls} placeholder="01 January 1980" />
+              </div>
+              <div>
+                <label className={labelCls}>Nationality</label>
+                <input value={cv.nationality} onChange={e => set('nationality', e.target.value)} className={inputCls} placeholder="South African" />
+              </div>
+              <div>
+                <label className={labelCls}>Gender</label>
+                <select value={cv.gender} onChange={e => set('gender', e.target.value)} className={inputCls}>
+                  <option value="">Select…</option>
+                  <option>Male</option><option>Female</option><option>Prefer not to say</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Driver's Licence</label>
+                <input value={cv.driversLicense} onChange={e => set('driversLicense', e.target.value)} className={inputCls} placeholder="Code 8 / EB / None" />
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       );
 
@@ -448,36 +516,93 @@ export default function CvBuilder() {
       );
 
       case 4: return (
-        <div className="space-y-5">
-          {cv.education.map((e, i) => (
-            <div key={i} className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-[#0A2540]">Education {i + 1}</p>
-                {cv.education.length > 1 && (
-                  <button onClick={() => set('education', cv.education.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Qualification</label>
-                  <input value={e.qualification} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],qualification:ev.target.value}; set('education',u); }} className={inputCls} placeholder="National Trade Certificate: Boilermaker" />
-                </div>
-                <div>
-                  <label className={labelCls}>Year</label>
-                  <input value={e.year} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],year:ev.target.value}; set('education',u); }} className={inputCls} placeholder="2018" />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className={labelCls}>Institution</label>
-                  <input value={e.institution} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],institution:ev.target.value}; set('education',u); }} className={inputCls} placeholder="Tshwane University of Technology" />
-                </div>
-              </div>
+        <div className="space-y-6">
+          {/* Secondary Education */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-bold text-[#0A2540]">Secondary Education</span>
+              <span className="text-xs text-gray-400">(Matric / Grade 12)</span>
             </div>
-          ))}
-          <button onClick={() => set('education', [...cv.education, emptyEdu()])} className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800">
-            <Plus className="w-4 h-4" /> Add Education
-          </button>
+            <div className="space-y-3">
+              {cv.education.map((e, i) => (
+                <div key={i} className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[#0A2540]">School {i + 1}</p>
+                    {cv.education.length > 1 && (
+                      <button onClick={() => set('education', cv.education.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>Qualification</label>
+                      <input value={e.qualification} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],qualification:ev.target.value}; set('education',u); }} className={inputCls} placeholder="National Senior Certificate (Matric)" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Year</label>
+                      <input value={e.year} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],year:ev.target.value}; set('education',u); }} className={inputCls} placeholder="2015" />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={labelCls}>School Name</label>
+                      <input value={e.institution} onChange={ev => { const u=[...cv.education]; u[i]={...u[i],institution:ev.target.value}; set('education',u); }} className={inputCls} placeholder="Johannesburg High School" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => set('education', [...cv.education, emptyEdu()])} className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800">
+                <Plus className="w-4 h-4" /> Add School
+              </button>
+            </div>
+          </div>
+
+          {/* Tertiary Education */}
+          <div className="border-t border-gray-100 pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-bold text-[#0A2540]">Tertiary Education</span>
+              <span className="text-xs text-gray-400">(University / College / TVET) — optional</span>
+            </div>
+            <div className="space-y-3">
+              {cv.tertiary.length === 0 ? (
+                <div className="text-center py-6 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                  <p className="text-gray-400 text-sm mb-3">No tertiary education added</p>
+                  <button onClick={() => set('tertiary', [emptyEdu()])} className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800 mx-auto">
+                    <Plus className="w-4 h-4" /> Add Tertiary Qualification
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {cv.tertiary.map((e, i) => (
+                    <div key={i} className="bg-blue-50 rounded-xl p-4 border border-blue-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-[#0A2540]">Qualification {i + 1}</p>
+                        <button onClick={() => set('tertiary', cv.tertiary.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="sm:col-span-2">
+                          <label className={labelCls}>Qualification</label>
+                          <input value={e.qualification} onChange={ev => { const u=[...cv.tertiary]; u[i]={...u[i],qualification:ev.target.value}; set('tertiary',u); }} className={inputCls} placeholder="Diploma in Business Management" />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Year</label>
+                          <input value={e.year} onChange={ev => { const u=[...cv.tertiary]; u[i]={...u[i],year:ev.target.value}; set('tertiary',u); }} className={inputCls} placeholder="2019" />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <label className={labelCls}>Institution</label>
+                          <input value={e.institution} onChange={ev => { const u=[...cv.tertiary]; u[i]={...u[i],institution:ev.target.value}; set('tertiary',u); }} className={inputCls} placeholder="University of Johannesburg" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => set('tertiary', [...cv.tertiary, emptyEdu()])} className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800">
+                    <Plus className="w-4 h-4" /> Add Another
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       );
 
@@ -495,8 +620,8 @@ export default function CvBuilder() {
             <textarea value={cv.certifications} onChange={e => set('certifications', e.target.value)} placeholder="Trade Tested Boilermaker, First Aid Level 3…" rows={2} className={`${inputCls} resize-none`} />
           </div>
           <div>
-            <label className={labelCls}>Languages (comma-separated)</label>
-            <input value={cv.languages} onChange={e => set('languages', e.target.value)} placeholder="English, Zulu, Afrikaans" className={inputCls} />
+            <label className={labelCls}>Languages <span className="text-gray-300 font-normal normal-case tracking-normal">(optional — comma-separated)</span></label>
+            <input value={cv.languages} onChange={e => set('languages', e.target.value)} placeholder="English, Zulu, Afrikaans — leave blank to omit" className={inputCls} />
           </div>
         </div>
       );
